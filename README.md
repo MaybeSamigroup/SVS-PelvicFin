@@ -28,3 +28,5 @@ Ctrl + p is mapped as default and can be configured through plugin setting.
 # Known issue
 
 Currently eye and mouth modification in h schene may be overriden by animation.
+
+![image](https://github.com/user-attachments/assets/ea4a6631-1599-4652-98c1-45580e511166)
