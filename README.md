@@ -2,7 +2,7 @@
 
 plugin to modify miscellaneous character status in character creation and h scene for SamabakeScramble.
 
-# Prerequests
+# Prerequisites
 
  * [BepInEx](https://github.com/BepInEx/BepInEx)
    * v6.0.0 be 725 or later
