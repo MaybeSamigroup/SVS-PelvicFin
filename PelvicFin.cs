@@ -3,17 +3,17 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP;
 using System;
-using System.Collections.Generic;
 using System.Linq;
+using System.Collections.Generic;
 using UnityEngine;
 using UniRx;
 using UniRx.Triggers;
 using Cysharp.Threading.Tasks;
 using UnityEngine.UI;
 using TMPro;
-using ILLGames.Unity.Component;
 using Character;
 using CharacterCreation;
+using ILLGames.Unity.Component;
 
 namespace PelvicFin
 {
@@ -48,249 +48,227 @@ namespace PelvicFin
         internal static Transform Window = SV.Config.ConfigWindow
             .Instance.transform.Find("Canvas").Find("Background").Find("MainWindow");
         internal static GameObject Text => Window
-                .Find("Settings").Find("Scroll View").Find("Viewport").Find("Content")
-                .Find("CameraSetting").Find("Content").Find("SensitivityX").Find("Title").gameObject;
+            .Find("Settings").Find("Scroll View").Find("Viewport").Find("Content")
+            .Find("CameraSetting").Find("Content").Find("SensitivityX").Find("Title").gameObject;
         internal static GameObject Slider => Window
-                .Find("Settings").Find("Scroll View").Find("Viewport").Find("Content")
-                .Find("CameraSetting").Find("Content").Find("SensitivityX").Find("Slider").gameObject;
+            .Find("Settings").Find("Scroll View").Find("Viewport").Find("Content")
+            .Find("CameraSetting").Find("Content").Find("SensitivityX").Find("Slider").gameObject;
         internal static GameObject Button => Window
-                .Find("Settings").Find("Scroll View").Find("Viewport").Find("Content")
-                .Find("CameraSetting").Find("Content").Find("SensitivityX").Find("btnReset").gameObject;
-        internal static UI UI;
-        internal static void Refresh() => (HumanCustom.Instance.Human != null && Plugin.Instance.Status.Value).Either(UI.Hide, UI.Show);
-        internal static UniTask RefreshTask = UniTask.CompletedTask;
-        internal static void ScheduleRefresh() =>
-            RefreshTask.Status.IsCompleted().Maybe(() => RefreshTask = UniTask.NextFrame().ContinueWith((Action)Refresh));
-        internal static Action InputCheck = () =>
-            Plugin.Instance.Toggle.Value.IsDown()
-                .Maybe(() => (Plugin.Instance.Status.Value = !Plugin.Instance.Status.Value).With(ScheduleRefresh));
-        internal static void Setup() {
-            (HumanCustom.Instance.Human != null).Either(
-                () => UniTask.NextFrame().ContinueWith((Action)Setup),
-                () => {
-                    UI = new UI(new GameObject(Plugin.Name)
-                        .With(HumanCustom.Instance.transform.Find("UI").Find("Root").Wrap), () => HumanCustom.Instance.Human, () => {})
-                        .With(ScheduleRefresh);
-                    Canvas.preWillRenderCanvases += InputCheck;
-                });
-        }
-        internal static void Dispose() {
-           Canvas.preWillRenderCanvases -= InputCheck;
-            UnityEngine.Object.Destroy(UI.Window);
-            UI = null;
-        }
-        internal static void Initialize() {
-            Util.Hook<HumanCustom>(Setup, Dispose);
-        }
+            .Find("Settings").Find("Scroll View").Find("Viewport").Find("Content")
+            .Find("CameraSetting").Find("Content").Find("SensitivityX").Find("btnReset").gameObject;
+        internal static GameObject Check => Window
+            .Find("Settings").Find("Scroll View").Find("Viewport").Find("Content")
+            .Find("GraphicSetting").Find("Content").Find("Effects").Find("tglSSAO").gameObject;
+        internal static Transform HumanCustomRoot =>
+            HumanCustom.Instance.transform.Find("UI").Find("Root");
+        internal static Transform HSceneRoot =>
+            SV.H.HScene.Instance.transform;
     }
-    internal static class UIRefHScene
+    enum ToggleProp
     {
-        static int CurrentIndex = 0;
-        static Human CurrentTarget() =>
-            SV.H.HScene.Instance.Actors[CurrentIndex].Human;
-        static void ToggleTarget() => CurrentIndex = (CurrentIndex + 1) % SV.H.HScene.Instance.Actors.Count();
-        internal static UI UI;
-        internal static void Refresh() => Plugin.Instance.Status.Value.Either(UI.Hide, UI.Show);
-        internal static UniTask RefreshTask = UniTask.CompletedTask;
-        internal static void ScheduleRefresh() =>
-            RefreshTask.Status.IsCompleted().Maybe(() => RefreshTask = UniTask.NextFrame().ContinueWith((Action)Refresh));
-        internal static Action InputCheck = () =>
-            Plugin.Instance.Toggle.Value.IsDown().Maybe(() => (Plugin.Instance.Status.Value = !Plugin.Instance.Status.Value).With(ScheduleRefresh));
-        internal static Action<bool> TargetSelect;
-        static void Setup() {
-            UI = new UI(new GameObject(Plugin.Name)
-                .With(SV.H.HScene.Instance.transform.Wrap), CurrentTarget, ToggleTarget)
-                .With(ScheduleRefresh).With(ui => TargetSelect = value => value.Maybe(() => ui.Refresh()));
-            Canvas.preWillRenderCanvases += InputCheck;
-        }
-        static void Dispose() {
-            Canvas.preWillRenderCanvases -= InputCheck;
-            UnityEngine.Object.Destroy(UI.Window);
-            UI = null;
-        }
-        internal static void Initialize() => Util.Hook<SV.H.HScene>(Setup, Dispose);
-    }
-    internal enum ToggleProp {
         Son, Sack, Condom, EyesHighlight
     }
-    internal enum CycledProp {
+    enum CycledProp
+    {
         EyebrowsPattern, EyesPattern, MouthPattern, Tears
     }
-    internal enum RangedProp {
+    enum RangedProp
+    {
         EyesOpen, MouthOpen, NipStand, CheekRed, AssRed, Sweat, Wet
     }
-    internal static class UIFactory
+    static partial class ToggleExtensions
+    {
+        static IEnumerable<Renderer> ToRenderers(this Transform tf) =>
+            Enumerable.Range(0, tf.childCount).Select(idx => tf.GetChild(idx).gameObject).SelectMany(ToRenderers);
+        static IEnumerable<Renderer> ToRenderers(this GameObject go) =>
+            go.GetComponents<Renderer>().Concat(ToRenderers(go.transform));
+        internal static Tuple<Func<bool>, Action<bool>> Transform(this ToggleProp prop, Human human) =>
+            prop switch
+            {
+                ToggleProp.Son => new(
+                    () => human.data.Status.visibleSonAlways,
+                    (value) => human.data.Status.visibleSonAlways = value),
+                ToggleProp.Sack => new(
+                    () => human.body.objBody.ToRenderers()
+                        .Where(renderer => "o_dan_f".Equals(renderer.name))
+                        .Select(renderer => renderer.enabled).FirstOrDefault(false),
+                    (value) => human.body.objBody.ToRenderers()
+                        .Where(renderer => "o_dan_f".Equals(renderer.name))
+                        .Do(renderer => renderer.enabled = value)),
+                ToggleProp.Condom => new(
+                    () => human.data.Status.visibleGomu,
+                    (value) => human.data.Status.visibleGomu = value),
+                ToggleProp.EyesHighlight => new(
+                    () => !human.data.Status.hideEyesHighlight,
+                    (value) => human.face.HideEyeHighlight(!value)),
+                _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, null)
+            };
+        internal static Tuple<Func<int>, Func<int>, Action<int>> Transform(this CycledProp prop, Human human) =>
+            prop switch
+            {
+                CycledProp.EyebrowsPattern => new(
+                    () => human.data.Status.eyebrowPtn,
+                    () => (human.data.Status.eyebrowPtn + 1) % human.face.eyebrowCtrl.GetMaxPtn(),
+                    (value) => human.face.ChangeEyebrowPtn(value)),
+                CycledProp.EyesPattern => new(
+                    () => human.data.Status.eyesPtn,
+                    () => (human.data.Status.eyesPtn + 1) % human.face.eyesCtrl.GetMaxPtn(),
+                    (value) => human.face.ChangeEyesPtn(value)),
+                CycledProp.MouthPattern => new(
+                    () => human.data.Status.mouthPtn,
+                    () => (human.data.Status.mouthPtn + 1) % human.face.mouthCtrl.GetMaxPtn(),
+                    (value) => human.face.ChangeMouthPtn(value)),
+                CycledProp.Tears => new(
+                    () => human.data.Status.tearsLv,
+                    () => (human.data.Status.tearsLv + 1) % 4,
+                    (value) => human.data.Status.tearsLv = (byte)value),
+                _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, null)
+            };
+        internal static Tuple<Func<float>, Action<float>> Transform(this RangedProp prop, Human human) =>
+            prop switch
+            {
+                RangedProp.EyesOpen => new(
+                    () => human.data.Status.eyesOpenMax,
+                    (value) => human.face.ChangeEyesOpenMax(value)),
+                RangedProp.MouthOpen => new(
+                    () => human.data.Status.mouthOpenMax,
+                    (value) => human.face.ChangeMouthOpenMax(value)),
+                RangedProp.NipStand => new(
+                    () => human.data.Status.nipStandRate,
+                    (value) => human.body.ChangeNipRate(value)),
+                RangedProp.CheekRed => new(
+                    () => human.data.Status.hohoAkaRate,
+                    (value) => human.face.ChangeHohoAkaRate(new Il2CppSystem.Nullable<float>(value))),
+                RangedProp.AssRed => new(
+                    () => human.data.Status.siriAkaRate,
+                    (value) => human.body.ChangeSiriAkaRate(new Il2CppSystem.Nullable<float>(value))),
+                RangedProp.Sweat => new(
+                    () => human.data.Status.sweatRate,
+                    (value) => human.ChangeSweat(value)),
+                RangedProp.Wet => new(
+                    () => human.data.Status.wetRate,
+                    (value) => human.ChangeWet(value)),
+                _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, null)
+            };
+    }
+    internal static class UI
     {
         internal static void Wrap(this Transform tf, GameObject go) => go.transform.SetParent(tf);
-        internal static IEnumerable<Renderer> ToRenderers(this Transform tf) =>
-            Enumerable.Range(0, tf.childCount).Select(idx => tf.GetChild(idx).gameObject).SelectMany(ToRenderers);
-        internal static IEnumerable<Renderer> ToRenderers(this GameObject go) =>
-            go.GetComponents<Renderer>().Concat(ToRenderers(go.transform));
-        internal static int Cycle(this CycledProp prop, Human human) =>
-            prop switch {
-                CycledProp.EyebrowsPattern => (human.data.Status.eyebrowPtn + 1) % human.face.eyebrowCtrl.GetMaxPtn(),
-                CycledProp.EyesPattern => (human.data.Status.eyesPtn + 1) % human.face.eyesCtrl.GetMaxPtn(),
-                CycledProp.MouthPattern => (human.data.Status.mouthPtn + 1) % human.face.mouthCtrl.GetMaxPtn(),
-                _ => (human.data.Status.tearsLv + 1) % 4,
-            };
-        internal static Func<bool> ToGetter(this ToggleProp prop, Func<Human> func) =>
-            prop switch {
-                ToggleProp.Condom => () => func().data.Status.visibleGomu,
-                ToggleProp.EyesHighlight => () => !func().data.Status.hideEyesHighlight,
-                ToggleProp.Son => () => func().data.Status.visibleSonAlways,
-                _ => () => func().body.objBody?.ToRenderers()
-                    .Where(renderer => "o_dan_f".Equals(renderer.name))
-                    .Select(renderer => renderer.enabled).FirstOrDefault() ?? false
-            };
-        internal static Action ToSetter(this ToggleProp prop, Func<Human> func) =>
-            prop switch {
-                ToggleProp.Condom => () => func().data.Status.visibleGomu = !func().data.Status.visibleGomu,
-                ToggleProp.EyesHighlight => () => func().face.HideEyeHighlight(!func().data.Status.hideEyesHighlight),
-                ToggleProp.Son => () => func().data.Status.visibleSonAlways = !func().data.Status.visibleSonAlways,
-                _ => () => func().body.objBody.ToRenderers()
-                    .Where(renderer => "o_dan_f".Equals(renderer.name))
-                    .Do(renderer => renderer.enabled = !renderer.enabled)
-            };
-        internal static Func<int> ToGetter(this CycledProp prop, Func<Human> func) =>
-            prop switch {
-                CycledProp.EyebrowsPattern => () => func().data.Status.eyebrowPtn,
-                CycledProp.EyesPattern => () => func().data.Status.eyesPtn,
-                CycledProp.MouthPattern => () => func().data.Status.mouthPtn,
-                _ => () => func()?.data?.Status?.tearsLv ?? 0,
-            };
-        internal static Action ToSetter(this CycledProp prop, Func<Human> func) =>
-            prop switch {
-                CycledProp.EyebrowsPattern => () => func().face.ChangeEyebrowPtn(prop.Cycle(func()), false),
-                CycledProp.EyesPattern => () => func().face.ChangeEyesPtn(prop.Cycle(func()), false),
-                CycledProp.MouthPattern => () => func().face.ChangeMouthPtn(prop.Cycle(func()), false),
-                _ => () => func().data.Status.tearsLv = (byte)prop.Cycle(func())
-            };
-        internal static Func<float> ToGetter(this RangedProp prop, Func<Human> func) =>
-            prop switch {
-                RangedProp.EyesOpen => () => func().data.Status.eyesOpenMax,
-                RangedProp.MouthOpen => () => func().data.Status.mouthOpenMax,
-                RangedProp.NipStand => () => func().data.Status.nipStandRate,
-                RangedProp.CheekRed => () => func().data.Status.hohoAkaRate,
-                RangedProp.AssRed => () => func().data.Status.siriAkaRate,
-                RangedProp.Sweat => () => func().data.Status.sweatRate,
-                _ => () => func().data.Status.wetRate,
-            };
-        internal static Action<float> ToSetter(this RangedProp prop, Func<Human> func) =>
-            prop switch {
-                RangedProp.EyesOpen => (value) => func().face.ChangeEyesOpenMax(value),
-                RangedProp.MouthOpen => (value) => func().face.ChangeMouthOpenMax(value),
-                RangedProp.NipStand => (value) => func().body.ChangeNipRate(value),
-                RangedProp.CheekRed => (value) => func().face.ChangeHohoAkaRate(new Il2CppSystem.Nullable<float>(value)),
-                RangedProp.AssRed => (value) => func().body.ChangeSiriAkaRate(new Il2CppSystem.Nullable<float>(value)),
-                RangedProp.Sweat => (value) => func().ChangeSweat(value),
-                _ => (value) => func().ChangeWet(value)
-            };
-        internal static Action ToEdit(this GameObject go, Action setter, Func<bool> getter) {
-            go.GetComponent<LayoutElement>().With(ui => {
-                ui.preferredWidth = 230;
-                ui.preferredHeight = 30;
+        internal static Action<GameObject> Active = go => go.SetActive(true);
+        internal static Action<GameObject> Inactive = go => go.SetActive(false);
+        internal static Action<GameObject> Configure<T>(Action<T> action) where T : Component => go => go.GetComponent<T>().With(action);
+        internal static void Rename(this string value, GameObject go) =>
+            go.GetComponentInChildren<TextMeshProUGUI>().SetText(go.name = value);
+        internal static void Check(this string value, GameObject go) =>
+            UnityEngine.Object.Instantiate(UIRef.Check, go.transform).With(ui =>
+            {
+                ui.AddComponent<LayoutElement>().preferredWidth = 180;
+                ui.GetComponentInChildren<Toggle>().isOn = false;
+                ui.GetComponentInChildren<TextMeshProUGUI>().SetText(value);
             });
-            UnityEngine.Object.Instantiate(UIRef.Text, go.transform).With(label =>
-             {
-                 label.AddComponent<LayoutElement>().preferredWidth = 150;
-                 label.GetComponent<TextMeshProUGUI>().SetText(go.name);
-             });
-            UnityEngine.Object.Instantiate(UIRef.Button, go.transform).AddComponent<LayoutElement>().With(ui => {
+        internal static void Label(this string value, GameObject go) =>
+             UnityEngine.Object.Instantiate(UIRef.Text, go.transform).With(ui =>
+            {
+                ui.AddComponent<LayoutElement>().preferredWidth = 180;
+                ui.GetComponent<TextMeshProUGUI>().SetText(value);
+            });
+        internal static void Cycle(GameObject go) =>
+            UnityEngine.Object.Instantiate(UIRef.Button, go.transform).AddComponent<LayoutElement>().With(ui =>
+            {
                 ui.preferredWidth = 30;
                 ui.preferredWidth = 30;
             });
-             UnityEngine.Object.Instantiate(UIRef.Text, go.transform).With(label =>
-             {
-                 label.AddComponent<LayoutElement>().preferredWidth = 50;
-                 label.GetComponent<TextMeshProUGUI>().With(text => {
+        internal static void Value(GameObject go) =>
+            UnityEngine.Object.Instantiate(UIRef.Text, go.transform).With(ui =>
+            {
+                ui.AddComponent<LayoutElement>().preferredWidth = 50;
+                ui.GetComponent<TextMeshProUGUI>().With(text =>
+                {
+                    text.SetText("0");
                     text.overflowMode = TextOverflowModes.Ellipsis;
-                    text.SetText(getter() ? "ON" : "OFF");
-                    setter += () => text.SetText(getter() ? "ON" : "OFF");
                 });
-             });
-            go.GetComponentInChildren<Button>().onClick.AddListener(setter);
-            return () => go.GetComponentsInChildren<TextMeshProUGUI>()[^1].SetText(getter() ? "ON" : "OFF");
-        }
-        internal static Action ToEdit(this GameObject go, Action setter, Func<int> getter) {
-            go.GetComponent<LayoutElement>().With(ui => {
-                ui.preferredWidth = 230;
-                ui.preferredHeight = 30;
             });
-            UnityEngine.Object.Instantiate(UIRef.Text, go.transform).With(label =>
-             {
-                 label.AddComponent<LayoutElement>().preferredWidth = 150;
-                 label.GetComponent<TextMeshProUGUI>().SetText(go.name);
-             });
-            UnityEngine.Object.Instantiate(UIRef.Button, go.transform).AddComponent<LayoutElement>().With(ui => {
-                ui.preferredWidth = 30;
-                ui.preferredWidth = 30;
-            });
-            UnityEngine.Object.Instantiate(UIRef.Text, go.transform).With(label =>
-             {
-                 label.AddComponent<LayoutElement>().preferredWidth = 50;
-                 label.GetComponent<TextMeshProUGUI>().With(text => {
-                    text.overflowMode = TextOverflowModes.Ellipsis;
-                    text.SetText(getter().ToString());
-                    setter += () => text.SetText(getter().ToString());
-                });
-             });
-            go.GetComponentInChildren<Button>().onClick.AddListener(setter);
-            return () => go.GetComponentsInChildren<TextMeshProUGUI>()[^1].SetText(getter().ToString());
-        }
-        internal static Action ToEdit(this GameObject go, Action<float> setter, Func<float> getter) {
-            go.GetComponent<LayoutElement>().With(ui => {
-                ui.preferredWidth = 230;
-                ui.preferredHeight = 30;
-            });
-            UnityEngine.Object.Instantiate(UIRef.Text, go.transform).With(label =>
-             {
-                 label.AddComponent<LayoutElement>().preferredWidth = 150;
-                 label.GetComponent<TextMeshProUGUI>().SetText(go.name);
-             });
+        internal static void Slider(GameObject go) =>
             UnityEngine.Object.Instantiate(UIRef.Slider, go.transform)
-                .AddComponent<LayoutElement>().preferredWidth= 80;
-            go.GetComponentInChildren<Slider>().With(ui => {
-                ui.value = getter();
-                ui.minValue = 0.0f;
-                ui.maxValue = 1.0f;
-                ui.onValueChanged.AddListener(setter);
+                .With(Configure<Slider>(ui =>
+                {
+                    ui.value = 0;
+                    ui.minValue = 0.0f;
+                    ui.maxValue = 1.0f;
+                }))
+                .AddComponent<LayoutElement>().preferredWidth = 80;
+        static GameObject Canvas(this Transform parent) =>
+            new GameObject(Plugin.Name).With(parent.Wrap).With(go =>
+            {
+                go.AddComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+                go.AddComponent<CanvasScaler>().With(ui =>
+                {
+                    ui.referenceResolution = new(1920, 1080);
+                    ui.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                    ui.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+                });
+                go.AddComponent<GraphicRaycaster>();
+                go.AddComponent<ObservableUpdateTrigger>();
             });
-            return () => go.GetComponentInChildren<Slider>().value = getter();
-        }
-        internal static void Window(this GameObject go) {
+        internal static ConfigEntry<float> AnchorX;
+        internal static ConfigEntry<float> AnchorY;
+        static Action<Unit> UpdateAnchorPosition(RectTransform ui) =>
+            _ => (AnchorX.Value, AnchorY.Value) = (ui.anchoredPosition.x, ui.anchoredPosition.y);
+        static void Window(this GameObject go)
+        {
+            go.GetComponentInParent<ObservableUpdateTrigger>().UpdateAsObservable().Subscribe(UpdateAnchorPosition(
             go.GetComponent<RectTransform>().With(ui =>
             {
                 ui.anchorMin = new(0.0f, 1.0f);
                 ui.anchorMax = new(0.0f, 1.0f);
                 ui.pivot = new(0.0f, 1.0f);
-                ui.anchoredPosition = new(1400, -120);
-                ui.sizeDelta = new(270, 524);
-            });
-            go.GetComponent<VerticalLayoutGroup>().With(ui => {
+                ui.sizeDelta = new(300, 524);
+                ui.anchoredPosition = new(AnchorX.Value, AnchorY.Value);
+            })));
+            go.GetComponent<VerticalLayoutGroup>().With(ui =>
+            {
                 ui.childControlWidth = true;
                 ui.childControlHeight = true;
             });
-            go.transform.Find("Title").gameObject.With(title => {
-                title.GetComponent<LayoutElement>().With(ui => {
-                    ui.preferredWidth = 230;
+            go.transform.Find("Title").gameObject.With(title =>
+            {
+                title.GetComponent<LayoutElement>().With(ui =>
+                {
+                    ui.preferredWidth = 260;
                     ui.preferredHeight = 44;
                 });
                 UnityEngine.Object.Destroy(title.transform.Find("Image").gameObject);
                 UnityEngine.Object.Destroy(title.transform.Find("btnClose").gameObject);
+                UnityEngine.Object.Instantiate(UIRef.Button, title.transform).With(toggle =>
+                {
+                    toggle.transform.SetSiblingIndex(0);
+                    toggle.GetComponent<RectTransform>().With(ui =>
+                    {
+                        ui.anchorMin = new(0.0f, 0.0f);
+                        ui.anchorMax = new(0.0f, 0.0f);
+                        ui.offsetMin = new(20.0f, 0.0f);
+                        ui.offsetMax = new(50.0f, 30.0f);
+                        ui.sizeDelta = new(30.0f, 30.0f);
+                    });
+                });
             });
-            go.transform.Find("Settings").gameObject.With(settings => {
+            go.transform.Find("Settings").gameObject.With(settings =>
+            {
                 Enumerable.Range(0, settings.transform.childCount)
                     .Select(settings.transform.GetChild)
-                    .Select(tf => tf.gameObject).Do(GameObject.Destroy);
+                    .Select(tf => tf.gameObject).Do(UnityEngine.Object.Destroy);
                 settings.GetComponent<LayoutElement>().preferredHeight = 480;
-                settings.AddComponent<VerticalLayoutGroup>().With(ui => {
+                settings.AddComponent<VerticalLayoutGroup>().With(ui =>
+                {
                     ui.childControlWidth = true;
                     ui.childControlHeight = true;
-                    ui.padding = new (20, 20, 10, 10);
+                    ui.padding = new(20, 20, 10, 10);
                 });
             });
             go.AddComponent<UI_DragWindow>();
         }
+        internal static GameObject Window(this Transform parent) =>
+            UnityEngine.Object.Instantiate(UIRef.Window.gameObject, parent.Canvas().transform).With(Window);
         internal static void FitLayout<T>(this GameObject go) where T : HorizontalOrVerticalLayoutGroup
         {
             go.AddComponent<RectTransform>().localScale = new(1.0f, 1.0f);
@@ -307,55 +285,152 @@ namespace PelvicFin
             });
         }
     }
-    internal class UI {
-        internal GameObject Window;
-        internal Action Refresh;
-        internal Action Show;
-        internal Action Hide;
-        internal UI(GameObject go, Func<Human> Target, Action Toggle) {
-            go.AddComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
-            go.AddComponent<CanvasScaler>().With(ui =>
-            {
-                ui.referenceResolution = new(1920, 1080);
-                ui.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                ui.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            });
-            go.AddComponent<GraphicRaycaster>();
-            Window = UnityEngine.Object.Instantiate(UIRef.Window.gameObject, go.transform).With(UIFactory.Window);
-            Window.transform.Find("Settings").With(content => {
-                Refresh = Enum.GetValues<ToggleProp>()
-                    .Select(item => new GameObject(item.ToString())
-                            .With(content.Wrap) 
-                            .With(UIFactory.FitLayout<HorizontalLayoutGroup>)
-                            .ToEdit(item.ToSetter(Target), item.ToGetter(Target)))
-                    .Concat(Enum.GetValues<CycledProp>()
-                        .Select(item => new GameObject(item.ToString())
-                            .With(content.Wrap)
-                            .With(UIFactory.FitLayout<HorizontalLayoutGroup>)
-                            .ToEdit(item.ToSetter(Target), item.ToGetter(Target))))
-                    .Concat(Enum.GetValues<RangedProp>()
-                        .Select(item => new GameObject(item.ToString())
-                            .With(content.Wrap)
-                            .With(UIFactory.FitLayout<HorizontalLayoutGroup>)
-                            .ToEdit(item.ToSetter(Target), item.ToGetter(Target))))
-                    .Aggregate((act1, act2) => act1 + act2);
-            });
-            Window.transform.Find("Title").With(title => {
-                Refresh += () => title.GetComponentInChildren<TextMeshProUGUI>().SetText(Target().fileParam.fullname);
-                GameObject.Instantiate(UIRef.Button, title).With(toggle => {
-                    toggle.transform.SetSiblingIndex(0);
-                    toggle.GetComponent<RectTransform>().With(ui => {
-                        ui.anchorMin = new (0.0f, 0.0f);
-                        ui.anchorMax = new (0.0f, 0.0f);
-                        ui.offsetMin = new (20.0f, 0.0f);
-                        ui.offsetMax = new (50.0f, 30.0f);
-                        ui.sizeDelta = new (30.0f, 30.0f);
-                    });
-                    toggle.GetComponent<Button>().onClick.AddListener(Toggle + Refresh);
-                });
-            });
-            Show = Refresh + (() => Window.active = true);
-            Hide = Refresh + (() => Window.active = false);
+    abstract class CommonEdit
+    {
+        protected static GameObject PrepareArcheType(string name, Transform parent) =>
+            new GameObject(name).With(parent.Wrap).With(UI.Inactive)
+                .With(UI.FitLayout<HorizontalLayoutGroup>)
+                .With(HumanCustom.Instance == null ? name.Check : name.Label)
+                .With(UI.Configure<LayoutElement>(ui =>
+                {
+                    ui.preferredWidth = 260;
+                    ui.preferredHeight = 30;
+                }));
+        protected abstract GameObject Archetype { get; }
+        protected GameObject Edit;
+        protected CommonEdit(string name, Transform parent) =>
+            Edit = UnityEngine.Object.Instantiate(Archetype, parent)
+                .With(name.Rename).With(UI.Active);
+        bool Check => HumanCustom.Instance == null && Edit.GetComponentInChildren<Toggle>().isOn;
+        internal void Update() =>
+            Check.Either(OnUpdateGet, OnUpdateSet);
+        protected abstract void OnUpdateGet();
+        protected abstract void OnUpdateSet();
+    }
+    class ToggleEdit : CommonEdit
+    {
+        static GameObject Base { get; set; }
+        internal static void PrepareArchetype(GameObject parent) =>
+            Base = PrepareArcheType("BoolEdit", parent.transform).With("Enable".Check);
+        protected override GameObject Archetype => Base;
+        Func<bool> Getter;
+        Action<bool> Setter;
+        Toggle Value => Edit.GetComponentsInChildren<Toggle>()[^1];
+        ToggleEdit(string name, Transform parent, Tuple<Func<bool>, Action<bool>> actions) :
+            base(name, parent) => (Getter, Setter) = actions;
+        ToggleEdit(ToggleProp prop, Transform parent, Human target) :
+            this(prop.ToString(), parent, prop.Transform(target)) => Value.onValueChanged.AddListener(Setter);
+        protected override void OnUpdateGet() =>
+            Value.SetIsOnWithoutNotify(Getter());
+        protected override void OnUpdateSet() =>
+            Setter(Value.isOn);
+        internal static IEnumerable<CommonEdit> Of(Transform parent, Human target) =>
+            Enum.GetValues<ToggleProp>().Select(item => new ToggleEdit(item, parent, target));
+    }
+    class CycledEdit : CommonEdit
+    {
+        static GameObject Base { get; set; }
+        internal static void PrepareArchetype(GameObject parent) =>
+            Base = PrepareArcheType("BoolEdit", parent.transform).With(UI.Cycle).With(UI.Value);
+        protected override GameObject Archetype => Base;
+        internal Func<int> Getter;
+        internal Func<int> Cycler;
+        internal Action<int> Setter;
+        Button Cycle => Edit.GetComponentInChildren<Button>();
+        TextMeshProUGUI Value => Edit.GetComponentsInChildren<TextMeshProUGUI>()[^1];
+        void OnCycle() => Value.SetText(Cycler().With(Setter).ToString());
+        CycledEdit(string name, Transform parent, Tuple<Func<int>, Func<int>, Action<int>> actions) :
+            base(name, parent) => (Getter, Cycler, Setter) = actions;
+        CycledEdit(CycledProp prop, Transform parent, Human target) :
+            this(prop.ToString(), parent, prop.Transform(target)) => Cycle.onClick.AddListener((Action)OnCycle);
+        protected override void OnUpdateGet() =>
+            Value.SetText(Getter().ToString());
+        protected override void OnUpdateSet() =>
+            Setter(int.Parse(Value.text));
+        internal static IEnumerable<CommonEdit> Of(Transform parent, Human target) =>
+            Enum.GetValues<CycledProp>().Select(item => new CycledEdit(item, parent, target));
+    }
+    class RangedEdit : CommonEdit
+    {
+        static GameObject Base { get; set; }
+        internal static void PrepareArchetype(GameObject parent) =>
+            Base = PrepareArcheType("BoolEdit", parent.transform).With(UI.Slider);
+        protected override GameObject Archetype => Base;
+        Action<float> Setter;
+        Func<float> Getter;
+        Slider Slider => Edit.GetComponentInChildren<Slider>();
+        RangedEdit(string name, Transform parent, Tuple<Func<float>, Action<float>> actions) :
+            base(name, parent) => (Getter, Setter) = actions;
+        RangedEdit(RangedProp prop, Transform parent, Human target) :
+            this(prop.ToString(), parent, prop.Transform(target)) => Slider.onValueChanged.AddListener(Setter);
+        protected override void OnUpdateGet() =>
+            Slider.SetValueWithoutNotify(Getter());
+        protected override void OnUpdateSet() =>
+            Setter(Slider.value);
+        internal static IEnumerable<CommonEdit> Of(Transform parent, Human target) =>
+            Enum.GetValues<RangedProp>().Select(item => new RangedEdit(item, parent, target));
+    }
+    class HumanPanel
+    {
+        Action OnActive;
+        GameObject Panel;
+        List<CommonEdit> Edits;
+        HumanPanel(Transform parent, Human target) =>
+            Edits = ToggleEdit.Of(parent, target).Concat(CycledEdit.Of(parent, target)).Concat(RangedEdit.Of(parent, target)).ToList();
+        HumanPanel(GameObject panel, Human target) : this(panel.transform, target) =>
+            Panel = panel;
+        internal HumanPanel(Transform title, Transform settings, Human target) :
+            this(new GameObject(target.name).With(settings.Wrap).With(UI.FitLayout<VerticalLayoutGroup>), target) =>
+            OnActive = () => title.GetComponentInChildren<TextMeshProUGUI>().SetText(target.fileParam.fullname);
+        void Enable() =>
+            Panel.With(OnActive).SetActive(true);
+        void Disable() =>
+            Panel.SetActive(false);
+        internal void SetActive(bool value) =>
+            value.Either(Disable, Enable);
+        internal void Update() =>
+            Edits.Do(item => item.Update());
+    }
+    internal class Window
+    {
+        static ConfigEntry<KeyboardShortcut> Toggle { get; set; }
+        static ConfigEntry<bool> Status { get; set; }
+        int CurrentIndex = -1;
+        List<HumanPanel> Panels;
+        void Cycle() =>
+            CurrentIndex = (CurrentIndex + 1) % Panels.Count;
+        void CyclePanel() =>
+            Enumerable.Range(0, Panels.Count).With(Cycle).Do(index => Panels[index].SetActive(index == CurrentIndex));
+        void Update() =>
+            Panels.Do(item => item.Update());
+        Action<Unit> ToggleActive(GameObject go) =>
+            _ => Toggle.With(Update).Value.IsDown().Maybe(() => go.SetActive(Status.Value = !Status.Value));
+        Window(Transform title, Transform settings, IEnumerable<Human> targets) =>
+            Panels = targets.Select(target => new HumanPanel(title, settings, target)).ToList();
+        Window(Transform tf, IEnumerable<Human> target) : this(tf.Find("Title"), tf.Find("Settings"), target) =>
+            tf.With(CyclePanel).GetComponentInChildren<Button>().onClick.AddListener((Action)CyclePanel);
+        Window(GameObject go, IEnumerable<Human> target) :
+            this(go.With(ToggleEdit.PrepareArchetype).With(CycledEdit.PrepareArchetype).With(RangedEdit.PrepareArchetype).transform, target)
+        {
+            go.With(Status.Value ? UI.Active : UI.Inactive)
+                .GetComponentInParent<ObservableUpdateTrigger>()
+                .UpdateAsObservable().Subscribe(ToggleActive(go));
+        }
+        static void DoNothing() { }
+        static void OnNextFrame(Action action) =>
+            UniTask.NextFrame().ContinueWith(action);
+        static Action CheckHuman() =>
+            HumanCustom.Instance.Human == null ?
+                () => OnNextFrame(CheckHuman()) :
+                () => new Window(UIRef.HumanCustomRoot.Window(), [HumanCustom.Instance.Human]);
+        internal static void Initialize()
+        {
+            UI.AnchorX = Plugin.Instance.Config.Bind("General", "Window AnchorX", 1000.0f);
+            UI.AnchorY = Plugin.Instance.Config.Bind("General", "Window AnchorY", -400.0f);
+            Status = Plugin.Instance.Config.Bind(new ConfigDefinition("General", "Show PelvicFin"), false);
+            Toggle = Plugin.Instance.Config.Bind("General", "Toggle PelvicFin GUI", new KeyboardShortcut(KeyCode.P, KeyCode.LeftControl));
+            Util.Hook<HumanCustom>(() => OnNextFrame(CheckHuman()), DoNothing);
+            Util.Hook<SV.H.HScene>(() => new Window(UIRef.HSceneRoot.Window(), SV.H.HScene.Instance.Actors.Select(actor => actor.Human)), DoNothing);
         }
     }
     [BepInProcess(Process)]
@@ -363,18 +438,11 @@ namespace PelvicFin
     public class Plugin : BasePlugin
     {
         internal static Plugin Instance;
-        internal ConfigEntry<bool> Status { get; set; }
-        internal ConfigEntry<KeyboardShortcut> Toggle { get; set; }
         public const string Process = "SamabakeScramble";
         public const string Name = "PelvicFin";
         public const string Guid = $"{Process}.{Name}";
-        public const string Version = "1.0.0";
-        public override void Load() {
-            Status = Config.Bind(new ConfigDefinition("General", "Visibility"), true);
-            Toggle = Config.Bind("General", "Toggle PlevicFin GUI", new KeyboardShortcut(KeyCode.P, KeyCode.LeftControl));
-            Instance = this;
-            UIRef.Initialize();
-            UIRefHScene.Initialize();
-        }
+        public const string Version = "1.0.1";
+        public override void Load() =>
+            (Instance = this).With(Window.Initialize);
     }
 }
