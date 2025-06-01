@@ -2,7 +2,7 @@
 
 plugin to modify miscellaneous character status in character creation and h scene for SamabakeScramble.
 
-## Prerequests
+## Prerequisites
 
 - [SVS-HF_Patch](https://github.com/ManlyMarco/SVS-HF_Patch)
   - Message Center
