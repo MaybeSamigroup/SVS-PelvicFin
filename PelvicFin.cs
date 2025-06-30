@@ -312,7 +312,7 @@ namespace PelvicFin
         public const string Process = "SamabakeScramble";
         public const string Name = "PelvicFin";
         public const string Guid = $"{Process}.{Name}";
-        public const string Version = "1.0.1";
+        public const string Version = "1.0.2";
         public override void Load() =>
             (Instance = this).With(Window.Initialize);
     }
