@@ -9,7 +9,7 @@ plugin to modify miscellaneous character status in character creation and h scen
   - BepInEx.ConfigurationManager
   - SVS_BepisPlugins
 - [CoastalSmell](https://github.com/MaybeSamigroup/SVS-Fishbone)
-  - 1.0.0 or later
+  - 1.0.1 or later
 
 Confirmed working under SVS 1.1.6
 

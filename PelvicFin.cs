@@ -31,10 +31,11 @@ namespace PelvicFin
     }
     static partial class ToggleExtensions
     {
-        static IEnumerable<Renderer> ToRenderers(this Transform tf) =>
-            Enumerable.Range(0, tf.childCount).Select(idx => tf.GetChild(idx).gameObject).SelectMany(ToRenderers);
-        static IEnumerable<Renderer> ToRenderers(this GameObject go) =>
-            go.GetComponents<Renderer>().Concat(ToRenderers(go.transform));
+        static IEnumerable<Renderer> ToRenderers(Transform tf) =>
+            tf == null ? [] : Enumerable.Range(0, tf.childCount)
+                .Select(idx => tf.GetChild(idx).gameObject).SelectMany(ToRenderers);
+        static IEnumerable<Renderer> ToRenderers(GameObject go) =>
+            go == null ? [] : go.GetComponents<Renderer>().Concat(ToRenderers(go?.transform));
         internal static Tuple<Func<bool>, Action<bool>> Transform(this ToggleProp prop, Human human) =>
             prop switch
             {
@@ -42,10 +43,10 @@ namespace PelvicFin
                     () => human.data.Status.visibleSonAlways,
                     value => human.data.Status.visibleSonAlways = value),
                 ToggleProp.Sack => new(
-                    () => human.body.objBody.ToRenderers()
+                    () => ToRenderers(human?.body?.objBody)
                         .Where(renderer => "o_dan_f".Equals(renderer.name))
                         .Select(renderer => renderer.enabled).FirstOrDefault(false),
-                    value => human.body.objBody.ToRenderers()
+                    value => ToRenderers(human?.body?.objBody)
                         .Where(renderer => "o_dan_f".Equals(renderer.name))
                         .Do(renderer => renderer.enabled = value)),
                 ToggleProp.Condom => new(
@@ -262,21 +263,22 @@ namespace PelvicFin
                 .With(UGUI.Toggle.Apply(80).Apply(24).Apply("2nd"))
                 .With(UGUI.Toggle.Apply(80).Apply(24).Apply("3rd")),
                 humans.Select(target => new HumanPanel(Handle, window, target)).ToList());
-        Window(IEnumerable<Human> humans, GameObject window) : this(window, humans) => window
-            .With(UGUI.ModifyAt("Selection", "1st")(
-                UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
-                UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(0))) +
-                UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 0))))
-            .With(UGUI.ModifyAt("Selection", "2nd")(
-                UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(1))) +
-                UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
-                UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 1))))
-            .With(UGUI.ModifyAt("Selection", "3rd")(
-                UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(2))) +
-                UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
-                UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 2))))
-            .GetComponentInParent<ObservableUpdateTrigger>()
-                .UpdateAsObservable().Subscribe(F.Ignoring<Unit>(Update));
+        Window(IEnumerable<Human> humans, GameObject window) : this(window, humans) =>
+            Handle.Disposables.Add(window
+                .With(UGUI.ModifyAt("Selection", "1st")(
+                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
+                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(0))) +
+                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 0))))
+                .With(UGUI.ModifyAt("Selection", "2nd")(
+                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(1))) +
+                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
+                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 1))))
+                .With(UGUI.ModifyAt("Selection", "3rd")(
+                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(2))) +
+                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
+                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 2))))
+                .GetComponentInParent<ObservableUpdateTrigger>()
+                    .UpdateAsObservable().Subscribe(F.Ignoring<Unit>(Update)));
         void Update() => Panels.ForEach(Update);
         void Update(HumanPanel panel) => panel.Update();
         static GameObject Create =>
@@ -295,12 +297,15 @@ namespace PelvicFin
                     .With(CommonEdit.PrepareHScene)
                     .With(ToggleEdit.Prepare)
                     .With(CycledEdit.Prepare)
-                    .With(RangedEdit.Prepare));
+                    .With(RangedEdit.Prepare))
+                .With(PrepareOnDestroyDispose);
+        static void PrepareOnDestroyDispose() =>
+            SV.H.HScene.Instance.OnDestroyAsObservable().Subscribe(F.Ignoring<Unit>(Handle.Dispose));
         internal static void Initialize()
         {
             Handle = new WindowHandle(Plugin.Instance, "PelvicFin", new(1000, -400), new KeyboardShortcut(KeyCode.P, KeyCode.LeftControl));
             Util<HumanCustom>.Hook(Util.OnCustomHumanReady.Apply(PrepareCustom), F.DoNothing);
-            Util<SV.H.HScene>.Hook(PrepareHScene, F.DoNothing);
+            Util<SV.H.HScene>.Hook(PrepareHScene, F.Apply(Plugin.Instance.Log.LogInfo, "HScene Disposed"));
         }
     }
     [BepInProcess(Process)]
@@ -312,7 +317,7 @@ namespace PelvicFin
         public const string Process = "SamabakeScramble";
         public const string Name = "PelvicFin";
         public const string Guid = $"{Process}.{Name}";
-        public const string Version = "1.0.2";
+        public const string Version = "1.0.3";
         public override void Load() =>
             (Instance = this).With(Window.Initialize);
     }
