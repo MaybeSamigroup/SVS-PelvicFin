@@ -19,7 +19,7 @@ namespace PelvicFin
 {
     enum ToggleProp
     {
-        Son, Sack, Condom, EyesHighlight
+        Son, Sack, Condom, Mosaic, Simple, EyesHighlight
     }
     enum CycledProp
     {
@@ -52,6 +52,12 @@ namespace PelvicFin
                 ToggleProp.Condom => new(
                     () => human.data.Status.visibleGomu,
                     value => human.data.Status.visibleGomu = value),
+                ToggleProp.Mosaic => new(
+                    () => !human.hideMoz,
+                    value => human.hideMoz = !value),
+                ToggleProp.Simple => new(
+                    () => human.data.Status.visibleSimple,
+                    value => human.data.Status.visibleSimple = value),
                 ToggleProp.EyesHighlight => new(
                     () => !human.data.Status.hideEyesHighlight,
                     value => human.face.HideEyeHighlight(!value)),
@@ -169,8 +175,8 @@ namespace PelvicFin
             Value.SetIsOnWithoutNotify(Getter());
         protected override void OnUpdateSet() =>
             Setter(Value.isOn);
-        internal static IEnumerable<CommonEdit> Of(Transform parent, Human target) =>
-            Enum.GetValues<ToggleProp>().Select(item => new ToggleEdit(item, parent, target));
+        internal static IEnumerable<CommonEdit> Of(GameObject parent, Human target) =>
+            Enum.GetValues<ToggleProp>().Select(item => new ToggleEdit(item, parent.transform, target));
     }
     class CycledEdit : CommonEdit
     {
@@ -201,8 +207,8 @@ namespace PelvicFin
             Value.SetText(Getter().ToString());
         protected override void OnUpdateSet() =>
             Setter(int.Parse(Value.text));
-        internal static IEnumerable<CommonEdit> Of(Transform parent, Human target) =>
-            Enum.GetValues<CycledProp>().Select(item => new CycledEdit(item, parent, target));
+        internal static IEnumerable<CommonEdit> Of(GameObject parent, Human target) =>
+            Enum.GetValues<CycledProp>().Select(item => new CycledEdit(item, parent.transform, target));
     }
     class RangedEdit : CommonEdit
     {
@@ -223,46 +229,50 @@ namespace PelvicFin
             Slider.SetValueWithoutNotify(Getter());
         protected override void OnUpdateSet() =>
             Setter(Slider.value);
-        internal static IEnumerable<CommonEdit> Of(Transform parent, Human target) =>
-            Enum.GetValues<RangedProp>().Select(item => new RangedEdit(item, parent, target));
+        internal static IEnumerable<CommonEdit> Of(GameObject parent, Human target) =>
+            Enum.GetValues<RangedProp>().Select(item => new RangedEdit(item, parent.transform, target));
     }
     class HumanPanel
     {
         Action OnActive;
-        GameObject Panel;
+        GameObject View;
         List<CommonEdit> Edits;
-        HumanPanel(Transform parent, Human target) =>
-            Edits = ToggleEdit.Of(parent, target).Concat(CycledEdit.Of(parent, target)).Concat(RangedEdit.Of(parent, target)).ToList();
-        HumanPanel(GameObject panel, Human target) : this(panel.transform, target) =>
-            Panel = panel;
-        internal HumanPanel(WindowHandle handle, GameObject parent, Human target) :
-            this(UGUI.Panel(260, 500, target.name, parent)
-                .With(UGUI.Cmp(UGUI.LayoutGroup<VerticalLayoutGroup>(spacing: 5, padding: new(10, 10, 5, 5)))), target) =>
-            OnActive = () => handle.Title.SetText(target.fileParam.fullname, false);
+        HumanPanel(GameObject panel) =>
+            View = panel.With(UGUI.Cmp(UGUI.LayoutGroup<VerticalLayoutGroup>(spacing: 5, padding: new(10, 10, 5, 5))));
+        HumanPanel(GameObject panel, Human target) : this(panel) =>
+            Edits = ToggleEdit.Of(panel, target).Concat(CycledEdit.Of(panel, target)).Concat(RangedEdit.Of(panel, target)).ToList();
+        HumanPanel(Window window, Human target) : this(UGUI.Panel(260, 500, target.name, window.Content), target) =>
+            OnActive = window.OnActive(target); 
         void Enable() =>
-            Panel.With(OnActive).SetActive(true);
+            View.SetActive(true);
         void Disable() =>
-            Panel.SetActive(false);
+            View.SetActive(false);
         internal void SetActive(bool value) =>
-            value.Either(Disable, Enable);
+            value.Either(Disable, Enable + OnActive);
+        internal void Update(CommonEdit edit) =>
+            edit.Update();
         internal void Update() =>
-            Edits.ForEach(item => item.Update());
+            Edits.ForEach(Update);
+        internal static Func<Human, HumanPanel> Create(Window window) =>
+            target => new(window, target);
     }
     internal class Window
     {
         static WindowHandle Handle;
+        internal GameObject Content;
         List<HumanPanel> Panels;
-        internal Action<bool> Toggle(int index) =>
+        Action<bool> Toggle(int index) =>
             index < Panels.Count ? Panels[index].SetActive : F.DoNothing.Ignoring<bool>();
-        Window(GameObject window, IEnumerable<Human> humans) =>
-            (_, Panels) = (UGUI.Panel(260, 24, "Selection", window)
+        Window(GameObject window) =>
+            UGUI.Panel(260, 24, "Selection", Content = window)
                 .With(UGUI.Go(active: true))
                 .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(padding: new(10, 10, 0, 0))))
                 .With(UGUI.Cmp(UGUI.ToggleGroup()))
                 .With(UGUI.Toggle.Apply(80).Apply(24).Apply("1st"))
                 .With(UGUI.Toggle.Apply(80).Apply(24).Apply("2nd"))
-                .With(UGUI.Toggle.Apply(80).Apply(24).Apply("3rd")),
-                humans.Select(target => new HumanPanel(Handle, window, target)).ToList());
+                .With(UGUI.Toggle.Apply(80).Apply(24).Apply("3rd"));
+        Window(GameObject window, IEnumerable<Human> humans) : this(window) =>
+            Panels = humans.Select(HumanPanel.Create(this)).ToList();
         Window(IEnumerable<Human> humans, GameObject window) : this(window, humans) =>
             Handle.Disposables.Add(window
                 .With(UGUI.ModifyAt("Selection", "1st")(
@@ -279,8 +289,16 @@ namespace PelvicFin
                     UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 2))))
                 .GetComponentInParent<ObservableUpdateTrigger>()
                     .UpdateAsObservable().Subscribe(F.Ignoring<Unit>(Update)));
-        void Update() => Panels.ForEach(Update);
-        void Update(HumanPanel panel) => panel.Update();
+        void Update(HumanPanel panel) =>
+            panel.Update();
+        void Update() =>
+            Panels.ForEach(Update);
+        internal Action OnActive(Human human) =>
+            () => Handle.Title.SetText(human.With(PrepareOnDestroy).fileParam.fullname, false);
+        void PrepareOnDestroy(Human human) =>
+            Handle.Disposables.Add(human.gameObject
+                .GetComponent<ObservableDestroyTrigger>()
+                .OnDestroyAsObservable().Subscribe(F.Ignoring<Unit>(Handle.Dispose)));
         static GameObject Create =>
             UGUI.Window(260, 500, Plugin.Name, Handle)
                 .With(UGUI.Cmp(UGUI.LayoutGroup<VerticalLayoutGroup>(spacing: 6)));
@@ -297,15 +315,12 @@ namespace PelvicFin
                     .With(CommonEdit.PrepareHScene)
                     .With(ToggleEdit.Prepare)
                     .With(CycledEdit.Prepare)
-                    .With(RangedEdit.Prepare))
-                .With(PrepareOnDestroyDispose);
-        static void PrepareOnDestroyDispose() =>
-            SV.H.HScene.Instance.OnDestroyAsObservable().Subscribe(F.Ignoring<Unit>(Handle.Dispose));
+                    .With(RangedEdit.Prepare));
         internal static void Initialize()
         {
             Handle = new WindowHandle(Plugin.Instance, "PelvicFin", new(1000, -400), new KeyboardShortcut(KeyCode.P, KeyCode.LeftControl));
-            Util<HumanCustom>.Hook(Util.OnCustomHumanReady.Apply(PrepareCustom), F.DoNothing);
-            Util<SV.H.HScene>.Hook(PrepareHScene, F.Apply(Plugin.Instance.Log.LogInfo, "HScene Disposed"));
+            Util<HumanCustom>.Hook(Util.OnCustomHumanReady.Apply(PrepareCustom), Handle.Dispose);
+            Util<SV.H.HScene>.Hook(PrepareHScene, Handle.Dispose);
         }
     }
     [BepInProcess(Process)]
@@ -317,7 +332,7 @@ namespace PelvicFin
         public const string Process = "SamabakeScramble";
         public const string Name = "PelvicFin";
         public const string Guid = $"{Process}.{Name}";
-        public const string Version = "1.0.3";
+        public const string Version = "1.0.4";
         public override void Load() =>
             (Instance = this).With(Window.Initialize);
     }
