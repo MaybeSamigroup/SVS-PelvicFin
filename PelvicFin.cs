@@ -63,28 +63,28 @@ namespace PelvicFin
                     value => human.face.HideEyeHighlight(!value)),
                 _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, null)
             };
-        internal static Tuple<Func<int>, Func<int>, Func<int>, Action<int>> Transform(this CycledProp prop, Human human) =>
+        internal static Tuple<Func<int>, Action, Action, Action<int>> Transform(this CycledProp prop, Human human) =>
             prop switch
             {
                 CycledProp.EyebrowsPattern => new(
                     () => human.data.Status.eyebrowPtn,
-                    () => (human.data.Status.eyebrowPtn - 1 + human.face.eyebrowCtrl.GetMaxPtn()) % human.face.eyebrowCtrl.GetMaxPtn(),
-                    () => (human.data.Status.eyebrowPtn + 1) % human.face.eyebrowCtrl.GetMaxPtn(),
+                    () => human.face.ChangeEyebrowPtn((human.data.Status.eyebrowPtn - 1 + human.face.eyebrowCtrl.GetMaxPtn()) % human.face.eyebrowCtrl.GetMaxPtn()),
+                    () => human.face.ChangeEyebrowPtn((human.data.Status.eyebrowPtn + 1) % human.face.eyebrowCtrl.GetMaxPtn()),
                     (value) => human.face.ChangeEyebrowPtn(value)),
                 CycledProp.EyesPattern => new(
                     () => human.data.Status.eyesPtn,
-                    () => (human.data.Status.eyesPtn - 1 + human.face.eyesCtrl.GetMaxPtn()) % human.face.eyesCtrl.GetMaxPtn(),
-                    () => (human.data.Status.eyesPtn + 1) % human.face.eyesCtrl.GetMaxPtn(),
+                    () => human.face.ChangeEyesPtn((human.data.Status.eyesPtn - 1 + human.face.eyesCtrl.GetMaxPtn()) % human.face.eyesCtrl.GetMaxPtn()),
+                    () => human.face.ChangeEyesPtn((human.data.Status.eyesPtn + 1) % human.face.eyesCtrl.GetMaxPtn()),
                     (value) => human.face.ChangeEyesPtn(value)),
                 CycledProp.MouthPattern => new(
                     () => human.data.Status.mouthPtn,
-                    () => (human.data.Status.mouthPtn - 1 + human.face.mouthCtrl.GetMaxPtn()) % human.face.mouthCtrl.GetMaxPtn(),
-                    () => (human.data.Status.mouthPtn + 1) % human.face.mouthCtrl.GetMaxPtn(),
+                    () => human.face.ChangeMouthPtn((human.data.Status.mouthPtn - 1 + human.face.mouthCtrl.GetMaxPtn()) % human.face.mouthCtrl.GetMaxPtn()),
+                    () => human.face.ChangeMouthPtn((human.data.Status.mouthPtn + 1) % human.face.mouthCtrl.GetMaxPtn()),
                     (value) => human.face.ChangeMouthPtn(value)),
                 CycledProp.Tears => new(
                     () => human.data.Status.tearsLv,
-                    () => (human.data.Status.tearsLv - 1 + 4) % 4,
-                    () => (human.data.Status.tearsLv + 1) % 4,
+                    () => human.data.Status.tearsLv = (byte)((human.data.Status.tearsLv - 1 + 4) % 4),
+                    () => human.data.Status.tearsLv = (byte)((human.data.Status.tearsLv + 1) % 4),
                     (value) => human.data.Status.tearsLv = (byte)value),
                 _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, null)
             };
@@ -187,18 +187,18 @@ namespace PelvicFin
                 .With(UGUI.Button.Apply(28).Apply(24).Apply("Next"));
         static GameObject Archetype { get; set; }
         internal Func<int> Getter;
-        internal Func<int> Prev;
-        internal Func<int> Next;
+        internal Action Prev;
+        internal Action Next;
         internal Action<int> Setter;
         TextMeshProUGUI Value;
-        CycledEdit(string name, Transform parent, Tuple<Func<int>, Func<int>, Func<int>, Action<int>> actions) :
+        CycledEdit(string name, Transform parent, Tuple<Func<int>, Action, Action, Action<int>> actions) :
             base(name, parent, Archetype) => (Getter, Prev, Next, Setter) = actions;
         CycledEdit(CycledProp prop, Transform parent, Human target) :
             this(prop.ToString(), parent, prop.Transform(target)) => Edit
                 .With(UGUI.ModifyAt("Prev")(UGUI.Cmp<Button>(ui =>
-                    ui.OnClickAsObservable().Subscribe((F.Compose(Prev, Setter) + OnUpdateGet).Ignoring<Unit>()))))
+                    ui.OnClickAsObservable().Subscribe((Prev + OnUpdateGet).Ignoring<Unit>()))))
                 .With(UGUI.ModifyAt("Next")(UGUI.Cmp<Button>(ui =>
-                    ui.OnClickAsObservable().Subscribe((F.Compose(Next, Setter) + OnUpdateGet).Ignoring<Unit>()))))
+                    ui.OnClickAsObservable().Subscribe((Next + OnUpdateGet).Ignoring<Unit>()))))
                 .With(UGUI.ModifyAt("Prev", "Prev.Label")(UGUI.Cmp(UGUI.Text(text: "<)"))))
                 .With(UGUI.ModifyAt("Next", "Next.Label")(UGUI.Cmp(UGUI.Text(text: "(>"))))
                 .With(UGUI.ModifyAt("Value")(UGUI.Cmp<TextMeshProUGUI>(ui =>
@@ -241,7 +241,7 @@ namespace PelvicFin
             View = panel.With(UGUI.Cmp(UGUI.LayoutGroup<VerticalLayoutGroup>(spacing: 5, padding: new(10, 10, 5, 5))));
         HumanPanel(GameObject panel, Human target) : this(panel) =>
             Edits = ToggleEdit.Of(panel, target).Concat(CycledEdit.Of(panel, target)).Concat(RangedEdit.Of(panel, target)).ToList();
-        HumanPanel(Window window, Human target) : this(UGUI.Panel(260, 500, target.name, window.Content), target) =>
+        HumanPanel(Window window, Human target) : this(UGUI.Panel(target.name, window.Content), target) =>
             OnActive = window.OnActive(target); 
         void Enable() =>
             View.SetActive(true);
@@ -264,7 +264,7 @@ namespace PelvicFin
         Action<bool> Toggle(int index) =>
             index < Panels.Count ? Panels[index].SetActive : F.DoNothing.Ignoring<bool>();
         Window(GameObject window) =>
-            UGUI.Panel(260, 24, "Selection", Content = window)
+            UGUI.Panel("Selection", Content = window)
                 .With(UGUI.Go(active: true))
                 .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(padding: new(10, 10, 0, 0))))
                 .With(UGUI.Cmp(UGUI.ToggleGroup()))
@@ -332,7 +332,7 @@ namespace PelvicFin
         public const string Process = "SamabakeScramble";
         public const string Name = "PelvicFin";
         public const string Guid = $"{Process}.{Name}";
-        public const string Version = "1.0.4";
+        public const string Version = "1.0.5";
         public override void Load() =>
             (Instance = this).With(Window.Initialize);
     }
