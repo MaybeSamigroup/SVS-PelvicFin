@@ -6,14 +6,21 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using UnityEngine;
+#if Aicomi
+using R3;
+using R3.Triggers;
+using HScene = H.HScene;
+#else
 using UniRx;
+using UniRx.Triggers;
+using HScene = SV.H.HScene;
+#endif
 using Cysharp.Threading.Tasks;
 using UnityEngine.UI;
 using TMPro;
 using Character;
 using CharacterCreation;
 using CoastalSmell;
-using UniRx.Triggers;
 
 namespace PelvicFin
 {
@@ -43,12 +50,21 @@ namespace PelvicFin
                     () => human.data.Status.visibleSonAlways,
                     value => human.data.Status.visibleSonAlways = value),
                 ToggleProp.Sack => new(
+#if Aicomi
+                    () => ToRenderers(human?.body?._objBody)
+                        .Where(renderer => "o_dan_f".Equals(renderer.name))
+                        .Select(renderer => renderer.enabled).FirstOrDefault(false),
+                    value => ToRenderers(human?.body?._objBody)
+                        .Where(renderer => "o_dan_f".Equals(renderer.name))
+                        .Do(renderer => renderer.enabled = value)),
+#else
                     () => ToRenderers(human?.body?.objBody)
                         .Where(renderer => "o_dan_f".Equals(renderer.name))
                         .Select(renderer => renderer.enabled).FirstOrDefault(false),
                     value => ToRenderers(human?.body?.objBody)
                         .Where(renderer => "o_dan_f".Equals(renderer.name))
                         .Do(renderer => renderer.enabled = value)),
+#endif
                 ToggleProp.Condom => new(
                     () => human.data.Status.visibleGomu,
                     value => human.data.Status.visibleGomu = value),
@@ -119,7 +135,7 @@ namespace PelvicFin
     {
         static Func<string, Transform, GameObject> PrepareArchetypeForCustom =
             (name, parent) => new GameObject(name).With(UGUI.Go(parent: parent, active: false))
-                .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(spacing: 5, padding: new(0, 0, 2, 2))))
+                .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(spacing: 5, padding: new() { left = 0, right = 0, top = 2, bottom = 2 })))
                 .With(UGUI.Cmp(UGUI.Layout(width: 240, height: 28)))
                 .With(UGUI.Label.Apply(140).Apply(24).Apply("Name"));
         static Func<string, Transform, GameObject> PrepareArchetypeForHScene =
@@ -238,11 +254,11 @@ namespace PelvicFin
         GameObject View;
         List<CommonEdit> Edits;
         HumanPanel(GameObject panel) =>
-            View = panel.With(UGUI.Cmp(UGUI.LayoutGroup<VerticalLayoutGroup>(spacing: 5, padding: new(10, 10, 5, 5))));
+            View = panel.With(UGUI.Cmp(UGUI.LayoutGroup<VerticalLayoutGroup>(spacing: 5, padding: new() { left = 10, right = 10, top = 5, bottom = 5 })));
         HumanPanel(GameObject panel, Human target) : this(panel) =>
             Edits = ToggleEdit.Of(panel, target).Concat(CycledEdit.Of(panel, target)).Concat(RangedEdit.Of(panel, target)).ToList();
         HumanPanel(Window window, Human target) : this(UGUI.Panel(target.name, window.Content), target) =>
-            OnActive = window.OnActive(target); 
+            OnActive = window.OnActive(target);
         void Enable() =>
             View.SetActive(true);
         void Disable() =>
@@ -256,7 +272,7 @@ namespace PelvicFin
         internal static Func<Human, HumanPanel> Create(Window window) =>
             target => new(window, target);
     }
-    internal class Window
+    internal partial class Window
     {
         static WindowHandle Handle;
         internal GameObject Content;
@@ -266,11 +282,19 @@ namespace PelvicFin
         Window(GameObject window) =>
             UGUI.Panel("Selection", Content = window)
                 .With(UGUI.Go(active: true))
-                .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(padding: new(10, 10, 0, 0))))
+                .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(padding: new() { left = 10, right = 10, top = 0, bottom = 0 })))
                 .With(UGUI.Cmp(UGUI.ToggleGroup()))
+#if Aicomi
+                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("1st"))
+                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("2nd"))
+                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("3rd"))
+                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("4th"))
+                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("5th"));
+#else
                 .With(UGUI.Toggle.Apply(80).Apply(24).Apply("1st"))
                 .With(UGUI.Toggle.Apply(80).Apply(24).Apply("2nd"))
                 .With(UGUI.Toggle.Apply(80).Apply(24).Apply("3rd"));
+#endif
         Window(GameObject window, IEnumerable<Human> humans) : this(window) =>
             Panels = humans.Select(HumanPanel.Create(this)).ToList();
         Window(IEnumerable<Human> humans, GameObject window) : this(window, humans) =>
@@ -287,6 +311,16 @@ namespace PelvicFin
                     UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(2))) +
                     UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
                     UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 2))))
+#if Aicomi
+                .With(UGUI.ModifyAt("Selection", "4th")(
+                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(3))) +
+                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
+                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 3))))
+                .With(UGUI.ModifyAt("Selection", "5th")(
+                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(4))) +
+                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
+                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 4))))
+#endif
                 .GetComponentInParent<ObservableUpdateTrigger>()
                     .UpdateAsObservable().Subscribe(F.Ignoring<Unit>(Update)));
         void Update(HumanPanel panel) =>
@@ -310,7 +344,11 @@ namespace PelvicFin
                     .With(CycledEdit.Prepare)
                     .With(RangedEdit.Prepare));
         static void PrepareHScene() =>
-            new Window(SV.H.HScene.Instance.Actors.Select(actor => actor.Human),
+#if Aicomi
+            new Window(HScene.Instance._hActorAll.Select(actor => actor.Human),
+#else
+            new Window(HScene.Instance.Actors.Select(actor => actor.Human),
+#endif
                 Create
                     .With(CommonEdit.PrepareHScene)
                     .With(ToggleEdit.Prepare)
@@ -320,19 +358,18 @@ namespace PelvicFin
         {
             Handle = new WindowHandle(Plugin.Instance, "PelvicFin", new(1000, -400), new KeyboardShortcut(KeyCode.P, KeyCode.LeftControl));
             Util<HumanCustom>.Hook(Util.OnCustomHumanReady.Apply(PrepareCustom), Handle.Dispose);
-            Util<SV.H.HScene>.Hook(PrepareHScene, Handle.Dispose);
+            Util<HScene>.Hook(PrepareHScene, Handle.Dispose);
         }
     }
     [BepInProcess(Process)]
     [BepInPlugin(Guid, Name, Version)]
     [BepInDependency(CoastalSmell.Plugin.Guid)]
-    public class Plugin : BasePlugin
+    public partial class Plugin : BasePlugin
     {
         internal static Plugin Instance;
-        public const string Process = "SamabakeScramble";
         public const string Name = "PelvicFin";
         public const string Guid = $"{Process}.{Name}";
-        public const string Version = "1.0.5";
+        public const string Version = "1.1.5";
         public override void Load() =>
             (Instance = this).With(Window.Initialize);
     }

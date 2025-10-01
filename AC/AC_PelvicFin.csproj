@@ -1,0 +1,95 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net6</TargetFramework>
+        <AssemblyName>AC_PelvicFin</AssemblyName>
+        <Description>plugin to modify miscellaneous character status in character creation and h scene for Aicomi</Description>
+        <LangVersion>latest</LangVersion>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<GameName>Aicomi</GameName>
+        <GamePath>$([MSBuild]::GetRegistryValue('HKEY_CURRENT_USER\Software\ILLGAMES\$(GameName)','INSTALLDIR'))</GamePath>
+        <DefineConstants>$(GameName)</DefineConstants>
+    </PropertyGroup>
+	<ItemGroup>
+		<Compile Include="..\PelvicFin.cs"/>
+		<Reference Include="0Harmony">
+			<HintPath>$(GamePath)\BepInEx\core\0Harmony.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="BepInEx.Core">
+			<HintPath>$(GamePath)\BepInEx\core\BepInEx.Core.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="BepInEx.Unity.IL2CPP">
+			<HintPath>$(GamePath)\BepInEx\core\BepInEx.Unity.IL2CPP.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="Il2CppInterop.Runtime">
+			<HintPath>$(GamePath)\BepInEx\core\Il2CppInterop.Runtime.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="Il2Cppmscorlib">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\Il2Cppmscorlib.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="UnityEngine.CoreModule">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\UnityEngine.CoreModule.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="UnityEngine.UIModule">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\UnityEngine.UIModule.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="UnityEngine.UI">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\UnityEngine.UI.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="UnityEngine.TextRenderingModule">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\UnityEngine.TextRenderingModule.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="Unity.TextMeshPro">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\Unity.TextMeshPro.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="R3">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\R3.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="R3.Unity">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\R3.Unity.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="UniTask">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\UniTask.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="Assembly-CSharp">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\Assembly-CSharp.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="ILGLib">
+			<HintPath>$(GamePath)\BepInEx\interop-$(GameName)\interop\ILGLib.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="BepinEx.KeyboardShortcut">
+			<HintPath>$(GamePath)\BepInEx\plugins\ConfigurationManager\BepinEx.KeyboardShortcut.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="CoastalSmell">
+			<HintPath>$(GamePath)\BepInEx\plugins\AC_CoastalSmell.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+	</ItemGroup>
+	<Target Name="Deploy" AfterTargets="Build">
+		<Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(GamePath)\BepInEx\plugins\" />
+	</Target>
+	<Target Name="Release" AfterTargets="Build">
+		<MakeDir Directories="Release\$(GameName)"/>
+		<Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="..\Release\$(GameName)\BepinEx\plugins"/>
+		<ZipDirectory SourceDirectory="..\Release\$(GmaeName)" Overwrite="true" DestinationFile="$(AssemblyName).zip"/>
+	</Target>
+	<Target Name="CleanRelease" AfterTargets="Clean">
+		<RemoveDir Directories="..\Release\$(GameName)"/>
+		<Delete Files="..\$(AssemblyName).zip"/>
+	</Target>
+</Project>
