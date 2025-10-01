@@ -82,7 +82,7 @@
 	<Target Name="Release" AfterTargets="Build">
 		<MakeDir Directories="Release\$(GameName)"/>
 		<Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="..\Release\$(GameName)\BepinEx\plugins"/>
-		<ZipDirectory SourceDirectory="..\Release\$(GmaeName)" Overwrite="true" DestinationFile="$(AssemblyName).zip"/>
+		<ZipDirectory SourceDirectory="..\Release\$(GmaeName)" Overwrite="true" DestinationFile="..\$(AssemblyName).zip"/>
 	</Target>
 	<Target Name="CleanRelease" AfterTargets="Clean">
 		<RemoveDir Directories="..\Release\$(GameName)"/>
