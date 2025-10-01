@@ -2,20 +2,35 @@
 
 plugin to modify miscellaneous character status in character creation and h scene for SamabakeScramble.
 
-## Prerequisites
+## Prerequisites (Aicomi)
+
+- [AC-HF_Patch](https://github.com/ManlyMarco/AC-HF_Patch)
+  - Message Center
+  - BepInEx.ConfigurationManager
+  - SVS_BepisPlugins
+- [CoastalSmell](https://github.com/MaybeSamigroup/SVS-Fishbone)
+  - 1.1.9 or later
+
+## Prerequisites (SamabakeScramble)
 
 - [SVS-HF_Patch](https://github.com/ManlyMarco/SVS-HF_Patch)
   - Message Center
   - BepInEx.ConfigurationManager
   - SVS_BepisPlugins
 - [CoastalSmell](https://github.com/MaybeSamigroup/SVS-Fishbone)
-  - 1.0.4 or later
+  - 1.1.9 or later
 
 Confirmed working under SVS 1.1.6
 
 ## Installation
 
 Extract the [latest release](https://github.com/MaybeSamigroup/SVS-PelvicFin/releases/latest) to your game install directory.
+
+## Migration from older release
+
+Remove `PelvicFin.dll` from BepinEx/plugins.
+
+Plugin assembly names are now `SVS_PelvicFin.dll` and `AC_PelvicFin.dll`.
 
 ## How to use
 
