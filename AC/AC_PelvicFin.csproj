@@ -84,7 +84,7 @@
 		<Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(GamePath)\BepInEx\plugins\" />
 	</Target>
 	<Target Name="Release" AfterTargets="Build">
-		<MakeDir Directories="Release\$(GameName)"/>
+		<MakeDir Directories="..\Release\$(GameName)"/>
 		<Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="..\Release\$(GameName)\BepinEx\plugins"/>
 		<ZipDirectory SourceDirectory="..\Release\$(GmaeName)" Overwrite="true" DestinationFile="..\$(AssemblyName).zip"/>
 	</Target>
