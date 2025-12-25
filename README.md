@@ -11,6 +11,8 @@ plugin to modify miscellaneous character status in character creation and h scen
 - [CoastalSmell](https://github.com/MaybeSamigroup/SVS-Fishbone)
   - 1.1.9 or later
 
+Confirmed working under Aicomi 1.0.1
+
 ## Prerequisites (SamabakeScramble)
 
 - [SVS-HF_Patch](https://github.com/ManlyMarco/SVS-HF_Patch)
@@ -20,7 +22,7 @@ plugin to modify miscellaneous character status in character creation and h scen
 - [CoastalSmell](https://github.com/MaybeSamigroup/SVS-Fishbone)
   - 1.1.9 or later
 
-Confirmed working under SVS 1.1.6
+Confirmed working under SamabakeScramble 1.1.6
 
 ## Installation
 

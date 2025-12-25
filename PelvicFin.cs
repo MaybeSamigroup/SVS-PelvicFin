@@ -1,18 +1,16 @@
-using HarmonyLib;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP;
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Reactive;
+using System.Reactive.Linq;
+using System.Reactive.Disposables;
 using UnityEngine;
 #if Aicomi
-using R3;
-using R3.Triggers;
 using HScene = H.HScene;
 #else
-using UniRx;
-using UniRx.Triggers;
 using HScene = SV.H.HScene;
 #endif
 using Cysharp.Threading.Tasks;
@@ -28,339 +26,269 @@ namespace PelvicFin
     {
         Son, Sack, Condom, Mosaic, Simple, EyesHighlight
     }
-    enum CycledProp
+    enum RingProp
     {
         EyebrowsPattern, EyesPattern, MouthPattern, Tears
     }
-    enum RangedProp
+    enum RangeProp
     {
+#if SamabakeScramble
+        EyesOpen, MouthOpen, NipStand, CheekRed, AssRed, Sweat, Wet, SonSize
+#else
         EyesOpen, MouthOpen, NipStand, CheekRed, AssRed, Sweat, Wet
+#endif
     }
-    static partial class ToggleExtensions
+    enum SceneType
     {
-        static IEnumerable<Renderer> ToRenderers(Transform tf) =>
-            tf == null ? [] : Enumerable.Range(0, tf.childCount)
-                .Select(idx => tf.GetChild(idx).gameObject).SelectMany(ToRenderers);
-        static IEnumerable<Renderer> ToRenderers(GameObject go) =>
-            go == null ? [] : go.GetComponents<Renderer>().Concat(ToRenderers(go?.transform));
-        internal static Tuple<Func<bool>, Action<bool>> Transform(this ToggleProp prop, Human human) =>
+        Custom, HScene
+    }
+    static class UI
+    {
+        internal static IDisposable[] Initialize(Plugin plugin) =>
+            Initialize(new WindowConfig(plugin, "PelvicFin", new(1000, -400), new KeyboardShortcut(KeyCode.P, KeyCode.LeftControl)));
+
+        static IDisposable[] Initialize(WindowConfig config) => [
+            HumanCustomExtension.OnHumanInitialize.Subscribe(tuple => Initialize(config, tuple.Human)),
+            SingletonInitializerExtension<HScene>.OnStartup.Subscribe(scene =>Initialize(config, ToHumans(scene)))
+        ];
+
+        static IEnumerable<Human> ToHumans(HScene scene) =>
+#if Aicomi
+            scene._hActorAll.Select(actor => actor.Human);
+#else
+            scene.Actors.Select(actor => actor.Human);
+#endif
+        internal static void Initialize(WindowConfig config, Human human) =>
+            SceneType.Custom.Initialize(config.Create(260, 500, Plugin.Name), human);
+
+        internal static void Initialize(WindowConfig config, IEnumerable<Human> humans) =>
+            SceneType.HScene.Initialize(config.Create(260, 500, Plugin.Name), humans);
+
+        static void Initialize(this SceneType scene, Window window, Human human) =>
+            window.Subscriptions.Add(new CompositeDisposable([
+                SingletonInitializerExtension<HumanCustom>.OnDestroy
+                    .Subscribe(_ => UnityEngine.Object.Destroy(window.Background)),
+                ..scene.Subscribe(window, scene.PrepareTemplate(window)
+                    .With(UGUI.GameObject(active: true)).transform, human)]));
+
+        static void Initialize(this SceneType scene, Window window, IEnumerable<Human> humans) =>
+            window.Subscriptions.Add(new CompositeDisposable([
+                SingletonInitializerExtension<HScene>.OnDestroy
+                    .Subscribe(_ => UnityEngine.Object.Destroy(window.Background)),
+                ..scene.Subscribe(window, scene.PrepareTemplate(window), Toggles(window), humans)
+            ]));
+
+        static IEnumerable<Toggle> Toggles(Window window) =>
+            Toggles(new GameObject("selection").With(
+                window.Content.AsParent() +
+                UGUI.ColorPanel +
+                UGUI.ToggleGroup() +
+                UGUI.LayoutH(padding: UGUI.Offset(5, 0)) +
+                UGUI.Interactable(false)
+            ).AsParent() + UGUI.Component<Toggle, ToggleGroup>((toggle, group) => toggle.group = group));
+
+        static IEnumerable<Toggle> Toggles(UIDesign design) =>
+#if Aicomi
+            new string[] { "1st", "2nd", "3rd", "4th", "5th" }
+                .Select(name => new GameObject(name).With(UGUI.Toggle(50, 24, UGUI.Text(text: name)) + design))
+#else
+            new string[] { "1st", "2nd", "3rd" }
+                .Select(name => new GameObject(name).With(UGUI.Toggle(80, 24, UGUI.Text(text: name)) + design))
+#endif
+                .Select(go => go.GetComponent<Toggle>()).ToList();
+
+        static IEnumerable<IDisposable> Subscribe(this SceneType scene, Window window,
+            GameObject template, IEnumerable<Toggle> toggles, IEnumerable<Human> humans) =>
+            toggles.Zip(humans).SelectMany(((Toggle ui, Human human) tuple) =>
+                scene.Subscribe(window, tuple.ui.With(ui => ui.interactable = true),
+                    UnityEngine.Object.Instantiate(template, window.Content.transform), tuple.human));
+
+        static IEnumerable<IDisposable> Subscribe(this SceneType scene,
+            Window window, Toggle ui, GameObject edit, Human human) => [
+                ..scene.Subscribe(window, edit.transform, human),
+                ui.OnValueChangedAsObservable().Subscribe(edit.SetActive),
+                edit.OnEnableAsObservable().Subscribe(_ => window.Title = human.fileParam.fullname)
+            ];
+
+        static GameObject PrepareTemplate(this SceneType scene, Window window) =>
+            new GameObject("Template").With(
+                window.Content.With(UGUI.LayoutV(spacing: 6)).AsParent(active: false) +
+                UGUI.ColorPanel + UGUI.LayoutV(spacing: 5, padding: UGUI.Offset(10, 5)) +
+                Enum.GetValues<ToggleProp>().Select(prop => prop.PrepareTemplate(scene)).AsDesign() +
+                Enum.GetValues<RingProp>().Select(prop => prop.PrepareTemplate(scene)).AsDesign() +
+                Enum.GetValues<RangeProp>().Select(prop => prop.PrepareTemplate(scene)).AsDesign());
+
+        static IEnumerable<IDisposable> Subscribe(this SceneType scene, Window window, Transform edit, Human human) => [
+            ..Enum.GetValues<ToggleProp>().SelectMany(prop => prop.Subscribe(scene, window, edit.Find(prop.ToString()), human)),
+            ..Enum.GetValues<RingProp>().SelectMany(prop => prop.Subscribe(scene, window, edit.Find(prop.ToString()), human)),
+            ..Enum.GetValues<RangeProp>().SelectMany(prop => prop.Subscribe(scene, window, edit.Find(prop.ToString()), human)),
+            human.component.OnDestroyAsObservable().Subscribe(_ => UnityEngine.Object.Destroy(window.Background))
+        ];
+
+        internal static UIDesign PrepareSceneUI(this SceneType scene, string name) =>
+            scene switch
+            {
+                SceneType.Custom =>
+                    UGUI.LayoutH(spacing: 5, padding: UGUI.Offset(0, 2)) +
+                    UGUI.Size(width: 240, height: 28) +
+                    "Name".AsChild(UGUI.Label(140, 24) + UGUI.Text(text: name)),
+                SceneType.HScene =>
+                    UGUI.LayoutH(spacing: 2) +
+                    UGUI.Size(width: 240, height: 28) +
+                    "Check".AsChild(UGUI.Check(26, 26)) +
+                    "Name".AsChild(UGUI.Label(106, 24) + UGUI.Text(text: name)),
+                _ => throw new ArgumentOutOfRangeException(nameof(scene), scene, null)
+            };
+        internal static (IObservable<Unit> OnUpdateSet, IObservable<Unit> OnUpdateGet) Subscribe(this SceneType scene, Window window, Transform edit) =>
+            scene switch
+            {
+                SceneType.Custom => (Observable.Never<Unit>(), window.OnUpdate),
+                SceneType.HScene => Subscribe(window, edit.Find("Check").gameObject.GetComponent<Toggle>()),
+                _ => throw new ArgumentOutOfRangeException(nameof(scene), scene, null)
+            };
+
+        static (IObservable<Unit> OnUpdateSet, IObservable<Unit> OnUpdateGet) Subscribe(Window window, Toggle toggle) =>
+            (window.OnUpdate.Where(_ => toggle.isOn), window.OnUpdate.Where(_ => !toggle.isOn));
+    }
+    static class ToggleExtension
+    {
+        internal static UIDesign PrepareTemplate(this ToggleProp prop, SceneType scene) =>
+            prop.ToString().AsChild(
+                scene.PrepareSceneUI(prop.ToString()) +
+                "Value".AsChild(UGUI.Check(26, 26)) +
+                "Enable".AsChild(UGUI.Label(56, 24)));
+
+        internal static IEnumerable<IDisposable> Subscribe(this ToggleProp prop, SceneType scene, Window window, Transform edit, Human human) =>
+            Subscribe(edit.Find("Value").GetComponent<Toggle>(), scene.Subscribe(window, edit), prop.Transform(human));
+
+        static IEnumerable<IDisposable> Subscribe(Toggle ui, (IObservable<Unit> OnUpdateSet, IObservable<Unit> OnUpdateGet) obs, (Func<bool> Get, Action<bool> Set) prop) => [
+            ui.OnValueChangedAsObservable().Subscribe(prop.Set),
+            obs.OnUpdateSet.Subscribe(_ => prop.Set(ui.isOn)),
+            obs.OnUpdateGet.Subscribe(_ => ui.SetIsOnWithoutNotify(prop.Get()))
+        ];
+
+        static (Func<bool> Get, Action<bool> Set) Transform(this ToggleProp prop, Human human) =>
             prop switch
             {
-                ToggleProp.Son => new(
-                    () => human.data.Status.visibleSonAlways,
-                    value => human.data.Status.visibleSonAlways = value),
-                ToggleProp.Sack => new(
-#if Aicomi
-                    () => ToRenderers(human?.body?._objBody)
-                        .Where(renderer => "o_dan_f".Equals(renderer.name))
-                        .Select(renderer => renderer.enabled).FirstOrDefault(false),
-                    value => ToRenderers(human?.body?._objBody)
-                        .Where(renderer => "o_dan_f".Equals(renderer.name))
-                        .Do(renderer => renderer.enabled = value)),
-#else
-                    () => ToRenderers(human?.body?.objBody)
-                        .Where(renderer => "o_dan_f".Equals(renderer.name))
-                        .Select(renderer => renderer.enabled).FirstOrDefault(false),
-                    value => ToRenderers(human?.body?.objBody)
-                        .Where(renderer => "o_dan_f".Equals(renderer.name))
-                        .Do(renderer => renderer.enabled = value)),
-#endif
-                ToggleProp.Condom => new(
-                    () => human.data.Status.visibleGomu,
-                    value => human.data.Status.visibleGomu = value),
-                ToggleProp.Mosaic => new(
-                    () => !human.hideMoz,
-                    value => human.hideMoz = !value),
-                ToggleProp.Simple => new(
-                    () => human.data.Status.visibleSimple,
-                    value => human.data.Status.visibleSimple = value),
-                ToggleProp.EyesHighlight => new(
-                    () => !human.data.Status.hideEyesHighlight,
-                    value => human.face.HideEyeHighlight(!value)),
+                ToggleProp.Son => (human.IsSon, human.SetSon),
+                ToggleProp.Sack => (human.IsSack, human.SetSack),
+                ToggleProp.Condom => (human.IsCondom, human.SetCondom),
+                ToggleProp.Mosaic => (human.IsMosaic, human.SetMosaic),
+                ToggleProp.Simple => (human.IsSimple, human.SetSimple),
+                ToggleProp.EyesHighlight => (human.IsEyeHighlight, human.SetEyeHighlight),
                 _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, null)
             };
-        internal static Tuple<Func<int>, Action, Action, Action<int>> Transform(this CycledProp prop, Human human) =>
+        static bool IsSon(this Human human) => human.data.Status.visibleSonAlways;
+        static void SetSon(this Human human, bool value) => human.data.Status.visibleSonAlways = value;
+        static bool IsSack(this Human human) => human.GetRefTransform(Table.RefObjKey.S_Son).Find("o_dan_f").GetComponent<Renderer>().enabled;
+        static void SetSack(this Human human, bool value) => human.GetRefTransform(Table.RefObjKey.S_Son).Find("o_dan_f").GetComponent<Renderer>().enabled = value;
+        static bool IsCondom(this Human human) => human.data.Status.visibleGomu;
+        static void SetCondom(this Human human, bool value) => human.data.Status.visibleGomu = value;
+        static bool IsMosaic(this Human human) => !human.hideMoz;
+        static void SetMosaic(this Human human, bool value) => human.hideMoz = !value;
+        static bool IsSimple(this Human human) => human.data.Status.visibleSimple;
+        static void SetSimple(this Human human, bool value) => human.data.Status.visibleSimple = value;
+        static bool IsEyeHighlight(this Human human) => !human.data.Status.hideEyesHighlight;
+        static void SetEyeHighlight(this Human human, bool value) => human.data.Status.hideEyesHighlight = !value;
+    }
+    static class RingExtension
+    {
+        internal static UIDesign PrepareTemplate(this RingProp prop, SceneType scene) =>
+            prop.ToString().AsChild(
+                scene.PrepareSceneUI(prop.ToString()) +
+                "Prev".AsChild(UGUI.Button(28, 24, UGUI.Text(text: "<)"))) +
+                "Value".AsChild(UGUI.Label(28, 24)) +
+                "Next".AsChild(UGUI.Button(28, 24, UGUI.Text(text: "()>"))));
+
+        internal static IEnumerable<IDisposable> Subscribe(this RingProp prop, SceneType scene, Window window, Transform edit, Human human) =>
+            Subscribe(Translate(edit.Find("Value").GetComponent<TextMeshProUGUI>()), edit.Find("Prev").GetComponent<Button>(), edit.Find("Next").GetComponent<Button>(), scene.Subscribe(window, edit), prop.Transform(human));
+
+        static (Func<int> GetUI, Action<int> SetUI) Translate(TextMeshProUGUI ui) =>
+            (() => int.Parse(ui.text), value => ui.SetText(value.ToString()));
+
+        static IEnumerable<IDisposable> Subscribe((Func<int> Get, Action<int> Set) ui, Button prev, Button next,
+            (IObservable<Unit> OnUpdateSet, IObservable<Unit> OnUpdateGet) obs, (Func<int, int> Ring, Func<int> Get, Action<int> Set) prop) => [
+            prev.OnClickAsObservable().Select(_ => prop.Ring(prop.Get() - 1)).Subscribe(ui.Set + prop.Set),
+            next.OnClickAsObservable().Select(_ => prop.Ring(prop.Get() + 1)).Subscribe(ui.Set + prop.Set),
+            obs.OnUpdateSet.Subscribe(_ => prop.Set(ui.Get())),
+            obs.OnUpdateGet.Subscribe(_ => ui.Set(prop.Get()))
+        ];
+
+        internal static (Func<int, int> Ring, Func<int> Get, Action<int> Set) Transform(this RingProp prop, Human human) =>
             prop switch
             {
-                CycledProp.EyebrowsPattern => new(
-                    () => human.data.Status.eyebrowPtn,
-                    () => human.face.ChangeEyebrowPtn((human.data.Status.eyebrowPtn - 1 + human.face.eyebrowCtrl.GetMaxPtn()) % human.face.eyebrowCtrl.GetMaxPtn()),
-                    () => human.face.ChangeEyebrowPtn((human.data.Status.eyebrowPtn + 1) % human.face.eyebrowCtrl.GetMaxPtn()),
-                    (value) => human.face.ChangeEyebrowPtn(value)),
-                CycledProp.EyesPattern => new(
-                    () => human.data.Status.eyesPtn,
-                    () => human.face.ChangeEyesPtn((human.data.Status.eyesPtn - 1 + human.face.eyesCtrl.GetMaxPtn()) % human.face.eyesCtrl.GetMaxPtn()),
-                    () => human.face.ChangeEyesPtn((human.data.Status.eyesPtn + 1) % human.face.eyesCtrl.GetMaxPtn()),
-                    (value) => human.face.ChangeEyesPtn(value)),
-                CycledProp.MouthPattern => new(
-                    () => human.data.Status.mouthPtn,
-                    () => human.face.ChangeMouthPtn((human.data.Status.mouthPtn - 1 + human.face.mouthCtrl.GetMaxPtn()) % human.face.mouthCtrl.GetMaxPtn()),
-                    () => human.face.ChangeMouthPtn((human.data.Status.mouthPtn + 1) % human.face.mouthCtrl.GetMaxPtn()),
-                    (value) => human.face.ChangeMouthPtn(value)),
-                CycledProp.Tears => new(
-                    () => human.data.Status.tearsLv,
-                    () => human.data.Status.tearsLv = (byte)((human.data.Status.tearsLv - 1 + 4) % 4),
-                    () => human.data.Status.tearsLv = (byte)((human.data.Status.tearsLv + 1) % 4),
-                    (value) => human.data.Status.tearsLv = (byte)value),
+                RingProp.EyebrowsPattern =>
+                    (human.EyebrowPattern, human.GetEyebrowPattern, human.SetEyebrowPattern),
+                RingProp.EyesPattern =>
+                    (human.EyePattern, human.GetEyePattern, human.SetEyePattern),
+                RingProp.MouthPattern =>
+                    (human.MouthPattern, human.GetMouthPattern, human.SetMouthPattern),
+                RingProp.Tears =>
+                    (val => Ring(val, 4), human.GetTearsLevel, human.SetTearsLevel),
                 _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, null)
             };
-        internal static Tuple<Func<float>, Action<float>> Transform(this RangedProp prop, Human human) =>
+        static int Ring(int val, int max) => (val + max) % max;
+        static int EyebrowPattern(this Human human, int value) => Ring(value, human.face.eyebrowCtrl.GetMaxPtn());
+        static int GetEyebrowPattern(this Human human) => human.data.Status.eyebrowPtn;
+        static void SetEyebrowPattern(this Human human, int value) => human.face.ChangeEyebrowPtn(value);
+        static int EyePattern(this Human human, int value) => Ring(value, human.face.eyesCtrl.GetMaxPtn());
+        static int GetEyePattern(this Human human) => human.data.Status.eyesPtn;
+        static void SetEyePattern(this Human human, int value) => human.face.ChangeEyesPtn(value);
+        static int MouthPattern(this Human human, int value) => Ring(value, human.face.mouthCtrl.GetMaxPtn());
+        static int GetMouthPattern(this Human human) => human.data.Status.mouthPtn;
+        static void SetMouthPattern(this Human human, int value) => human.face.ChangeMouthPtn(value);
+        static int GetTearsLevel(this Human human) => human.data.Status.tearsLv;
+        static void SetTearsLevel(this Human human, int value) => human.data.Status.tearsLv = (byte)value;
+    }
+    static class RangeExtension
+    {
+        internal static UIDesign PrepareTemplate(this RangeProp prop, SceneType scene) =>
+            prop.ToString().AsChild(scene.PrepareSceneUI(prop.ToString()) + "Range".AsChild(UGUI.Slider(95, 24)));
+
+        internal static IEnumerable<IDisposable> Subscribe(this RangeProp prop, SceneType scene, Window window, Transform edit, Human human) =>
+            Subscribe(edit.Find("Range").GetComponent<Slider>(), scene.Subscribe(window, edit), prop.Transform(human));
+
+        static IEnumerable<IDisposable> Subscribe(Slider ui, (IObservable<Unit> OnUpdateSet, IObservable<Unit> OnUpdateGet) obs, (Func<float> Get, Action<float> Set) prop) =>
+            [ui.OnValueChangedAsObservable().Subscribe(prop.Set), obs.OnUpdateSet.Subscribe(_ => prop.Set(ui.value)), obs.OnUpdateGet.Subscribe(_ => ui.SetValueWithoutNotify(prop.Get()))];
+
+        internal static (Func<float> Get, Action<float> Set) Transform(this RangeProp prop, Human human) =>
             prop switch
             {
-                RangedProp.EyesOpen => new(
-                    () => human.data.Status.eyesOpenMax,
-                    value => human.face.ChangeEyesOpenMax(value)),
-                RangedProp.MouthOpen => new(
-                    () => human.data.Status.mouthOpenMax,
-                    value => human.face.ChangeMouthOpenMax(value)),
-                RangedProp.NipStand => new(
-                    () => human.data.Status.nipStandRate,
-                    value => human.body.ChangeNipRate(value)),
-                RangedProp.CheekRed => new(
-                    () => human.data.Status.hohoAkaRate,
-                    value => human.face.ChangeHohoAkaRate(new Il2CppSystem.Nullable<float>(value))),
-                RangedProp.AssRed => new(
-                    () => human.data.Status.siriAkaRate,
-                    value => human.body.ChangeSiriAkaRate(new Il2CppSystem.Nullable<float>(value))),
-                RangedProp.Sweat => new(
-                    () => human.data.Status.sweatRate,
-                    value => human.ChangeSweat(value)),
-                RangedProp.Wet => new(
-                    () => human.data.Status.wetRate,
-                    value => human.ChangeWet(value)),
+                RangeProp.EyesOpen => (human.GetEyeOpen, human.SetEyeOpen),
+                RangeProp.MouthOpen => (human.GetMouthOpen, human.SetMouthOpen),
+                RangeProp.NipStand => (human.GetNipStand, human.SetNipStand),
+                RangeProp.CheekRed => (human.GetCheekRed, human.SetCheekRed),
+                RangeProp.AssRed => (human.GetAssRed, human.SetAssRed),
+                RangeProp.Sweat => (human.GetSweat, human.SetSweat),
+                RangeProp.Wet => (human.GetWet, human.SetWet),
+#if SamabakeScramble
+                RangeProp.SonSize => TransformScale(() => human.GetRefTransform(Table.RefObjKey.a_n_dan).parent),
+#endif
                 _ => throw new ArgumentOutOfRangeException(nameof(prop), prop, null)
             };
+        static float GetEyeOpen(this Human human) => human.data.Status.eyesOpenMax;
+        static void SetEyeOpen(this Human human, float value) => human.face.ChangeEyesOpenMax(value);
+        static float GetMouthOpen(this Human human) => human.data.Status.mouthOpenMax;
+        static void SetMouthOpen(this Human human, float value) => human.face.ChangeMouthOpenMax(value);
+        static float GetNipStand(this Human human) => human.data.Status.nipStandRate;
+        static void SetNipStand(this Human human, float value) => human.body.ChangeNipRate(value);
+        static float GetCheekRed(this Human human) => human.data.Status.hohoAkaRate;
+        static void SetCheekRed(this Human human, float value) => human.face.ChangeHohoAkaRate(new Il2CppSystem.Nullable<float>(value));
+        static float GetAssRed(this Human human) => human.data.Status.siriAkaRate;
+        static void SetAssRed(this Human human, float value) => human.body.ChangeSiriAkaRate(new Il2CppSystem.Nullable<float>(value));
+        static float GetSweat(this Human human) => human.data.Status.sweatRate;
+        static void SetSweat(this Human human, float value) => human.ChangeSweat(value);
+        static float GetWet(this Human human) => human.data.Status.wetRate;
+        static void SetWet(this Human human, float value) => human.ChangeWet(value);
+        static (Func<float> Get, Action<float> Set) TransformScale (this Func<Transform> tf) => (tf.GetScale, tf.SetScale);
+        static float GetScale(this Func<Transform> tf) =>
+            (ToScale(tf().localScale) - 0.5f) / 2.5f;
+        static void SetScale(this Func<Transform> tf, float value) =>
+            tf().localScale = ToVector3(0.5f + value * 2.5f);
+        static float ToScale(Vector3 values) => (values.x + values.y + values.z) / 3;
+        static Vector3 ToVector3(float value) => new(value, value, value);
     }
-    abstract class CommonEdit
-    {
-        static Func<string, Transform, GameObject> PrepareArchetypeForCustom =
-            (name, parent) => new GameObject(name).With(UGUI.Go(parent: parent, active: false))
-                .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(spacing: 5, padding: new() { left = 0, right = 0, top = 2, bottom = 2 })))
-                .With(UGUI.Cmp(UGUI.Layout(width: 240, height: 28)))
-                .With(UGUI.Label.Apply(140).Apply(24).Apply("Name"));
-        static Func<string, Transform, GameObject> PrepareArchetypeForHScene =
-            (name, parent) => new GameObject(name).With(UGUI.Go(parent: parent, active: false))
-                .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(spacing: 2)))
-                .With(UGUI.Cmp(UGUI.Layout(240)))
-                .With(UGUI.Check.Apply(24).Apply(24).Apply("Check"))
-                .With(UGUI.Label.Apply(106).Apply(24).Apply("Name"));
-        protected static Func<string, Transform, GameObject> PrepareArchetype;
-        static Func<string, Transform, GameObject, CommonEdit, GameObject> PrepareEditForCustom =
-            (name, parent, archetype, instance) =>
-                UnityEngine.Object.Instantiate(archetype, parent)
-                    .With(UGUI.Go(name: name, active: true))
-                    .With(UGUI.ModifyAt("Name")(UGUI.Cmp(UGUI.Text(text: name))));
-        static Func<string, Transform, GameObject, CommonEdit, GameObject> PrepareEditForHScene =
-            (name, parent, archetype, instance) =>
-                UnityEngine.Object.Instantiate(archetype, parent)
-                    .With(UGUI.Go(name: name, active: true))
-                    .With(UGUI.ModifyAt("Name")(UGUI.Cmp(UGUI.Text(text: name))))
-                    .With(UGUI.ModifyAt("Background.Check", "Check")
-                        (UGUI.Cmp<Toggle>(ui => instance.Check = () => ui.isOn)));
-        internal static void PrepareCustom() =>
-            (PrepareArchetype, PrepareEdit) = (PrepareArchetypeForCustom, PrepareEditForCustom);
-        internal static void PrepareHScene() =>
-            (PrepareArchetype, PrepareEdit) = (PrepareArchetypeForHScene, PrepareEditForHScene);
-        static Func<string, Transform, GameObject, CommonEdit, GameObject> PrepareEdit;
-        protected GameObject Edit;
-        Func<bool> Check = () => false;
-        protected CommonEdit(string name, Transform parent, GameObject archetype) =>
-            Edit = PrepareEdit(name, parent, archetype, this);
-        internal void Update() =>
-            Check().Either(OnUpdateGet, OnUpdateSet);
-        protected abstract void OnUpdateGet();
-        protected abstract void OnUpdateSet();
-    }
-    class ToggleEdit : CommonEdit
-    {
-        internal static void Prepare(GameObject parent) =>
-            Archetype = PrepareArchetype("BoolEdit", parent.transform)
-                .With(UGUI.Check.Apply(24).Apply(24).Apply("Value"))
-                .With(UGUI.Label.Apply(56).Apply(24).Apply("Enable"));
-        static GameObject Archetype { get; set; }
-        Func<bool> Getter;
-        Action<bool> Setter;
-        Toggle Value;
-        ToggleEdit(string name, Transform parent, Tuple<Func<bool>, Action<bool>> actions) :
-            base(name, parent, Archetype) => (Getter, Setter) = actions;
-        ToggleEdit(ToggleProp prop, Transform parent, Human target) :
-            this(prop.ToString(), parent, prop.Transform(target)) => Edit
-                .With(UGUI.ModifyAt("Background.Value", "Value")(UGUI.Cmp<Toggle>(ui =>
-                    (Value = ui).With(OnUpdateGet).OnValueChangedAsObservable().Subscribe(Setter))));
-        protected override void OnUpdateGet() =>
-            Value.SetIsOnWithoutNotify(Getter());
-        protected override void OnUpdateSet() =>
-            Setter(Value.isOn);
-        internal static IEnumerable<CommonEdit> Of(GameObject parent, Human target) =>
-            Enum.GetValues<ToggleProp>().Select(item => new ToggleEdit(item, parent.transform, target));
-    }
-    class CycledEdit : CommonEdit
-    {
-        internal static void Prepare(GameObject parent) =>
-            Archetype = PrepareArchetype("BoolEdit", parent.transform)
-                .With(UGUI.Button.Apply(28).Apply(24).Apply("Prev"))
-                .With(UGUI.Label.Apply(29).Apply(24).Apply("Value"))
-                .With(UGUI.Button.Apply(28).Apply(24).Apply("Next"));
-        static GameObject Archetype { get; set; }
-        internal Func<int> Getter;
-        internal Action Prev;
-        internal Action Next;
-        internal Action<int> Setter;
-        TextMeshProUGUI Value;
-        CycledEdit(string name, Transform parent, Tuple<Func<int>, Action, Action, Action<int>> actions) :
-            base(name, parent, Archetype) => (Getter, Prev, Next, Setter) = actions;
-        CycledEdit(CycledProp prop, Transform parent, Human target) :
-            this(prop.ToString(), parent, prop.Transform(target)) => Edit
-                .With(UGUI.ModifyAt("Prev")(UGUI.Cmp<Button>(ui =>
-                    ui.OnClickAsObservable().Subscribe((Prev + OnUpdateGet).Ignoring<Unit>()))))
-                .With(UGUI.ModifyAt("Next")(UGUI.Cmp<Button>(ui =>
-                    ui.OnClickAsObservable().Subscribe((Next + OnUpdateGet).Ignoring<Unit>()))))
-                .With(UGUI.ModifyAt("Prev", "Prev.Label")(UGUI.Cmp(UGUI.Text(text: "<)"))))
-                .With(UGUI.ModifyAt("Next", "Next.Label")(UGUI.Cmp(UGUI.Text(text: "(>"))))
-                .With(UGUI.ModifyAt("Value")(UGUI.Cmp<TextMeshProUGUI>(ui =>
-                    (Value = ui).With(OnUpdateGet).horizontalAlignment = HorizontalAlignmentOptions.Right)));
-        protected override void OnUpdateGet() =>
-            Value.SetText(Getter().ToString());
-        protected override void OnUpdateSet() =>
-            Setter(int.Parse(Value.text));
-        internal static IEnumerable<CommonEdit> Of(GameObject parent, Human target) =>
-            Enum.GetValues<CycledProp>().Select(item => new CycledEdit(item, parent.transform, target));
-    }
-    class RangedEdit : CommonEdit
-    {
-        internal static void Prepare(GameObject parent) =>
-            Archetype = PrepareArchetype("BoolEdit", parent.transform)
-                .With(UGUI.Slider.Apply(95).Apply(24).Apply("Range"));
-        static GameObject Archetype { get; set; }
-        Action<float> Setter;
-        Func<float> Getter;
-        Slider Slider => Edit.GetComponentInChildren<Slider>();
-        RangedEdit(string name, Transform parent, Tuple<Func<float>, Action<float>> actions) :
-            base(name, parent, Archetype) => (Getter, Setter) = actions;
-        RangedEdit(RangedProp prop, Transform parent, Human target) :
-            this(prop.ToString(), parent, prop.Transform(target)) => Edit
-                .With(UGUI.ModifyAt("Range")(UGUI.Cmp<Slider>(ui =>
-                    ui.With(OnUpdateGet).OnValueChangedAsObservable().Subscribe(Setter))));
-        protected override void OnUpdateGet() =>
-            Slider.SetValueWithoutNotify(Getter());
-        protected override void OnUpdateSet() =>
-            Setter(Slider.value);
-        internal static IEnumerable<CommonEdit> Of(GameObject parent, Human target) =>
-            Enum.GetValues<RangedProp>().Select(item => new RangedEdit(item, parent.transform, target));
-    }
-    class HumanPanel
-    {
-        Action OnActive;
-        GameObject View;
-        List<CommonEdit> Edits;
-        HumanPanel(GameObject panel) =>
-            View = panel.With(UGUI.Cmp(UGUI.LayoutGroup<VerticalLayoutGroup>(spacing: 5, padding: new() { left = 10, right = 10, top = 5, bottom = 5 })));
-        HumanPanel(GameObject panel, Human target) : this(panel) =>
-            Edits = ToggleEdit.Of(panel, target).Concat(CycledEdit.Of(panel, target)).Concat(RangedEdit.Of(panel, target)).ToList();
-        HumanPanel(Window window, Human target) : this(UGUI.Panel(target.name, window.Content), target) =>
-            OnActive = window.OnActive(target);
-        void Enable() =>
-            View.SetActive(true);
-        void Disable() =>
-            View.SetActive(false);
-        internal void SetActive(bool value) =>
-            value.Either(Disable, Enable + OnActive);
-        internal void Update(CommonEdit edit) =>
-            edit.Update();
-        internal void Update() =>
-            Edits.ForEach(Update);
-        internal static Func<Human, HumanPanel> Create(Window window) =>
-            target => new(window, target);
-    }
-    internal partial class Window
-    {
-        static WindowHandle Handle;
-        internal GameObject Content;
-        List<HumanPanel> Panels;
-        Action<bool> Toggle(int index) =>
-            index < Panels.Count ? Panels[index].SetActive : F.DoNothing.Ignoring<bool>();
-        Window(GameObject window) =>
-            UGUI.Panel("Selection", Content = window)
-                .With(UGUI.Go(active: true))
-                .With(UGUI.Cmp(UGUI.LayoutGroup<HorizontalLayoutGroup>(padding: new() { left = 10, right = 10, top = 0, bottom = 0 })))
-                .With(UGUI.Cmp(UGUI.ToggleGroup()))
-#if Aicomi
-                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("1st"))
-                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("2nd"))
-                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("3rd"))
-                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("4th"))
-                .With(UGUI.Toggle.Apply(50).Apply(24).Apply("5th"));
-#else
-                .With(UGUI.Toggle.Apply(80).Apply(24).Apply("1st"))
-                .With(UGUI.Toggle.Apply(80).Apply(24).Apply("2nd"))
-                .With(UGUI.Toggle.Apply(80).Apply(24).Apply("3rd"));
-#endif
-        Window(GameObject window, IEnumerable<Human> humans) : this(window) =>
-            Panels = humans.Select(HumanPanel.Create(this)).ToList();
-        Window(IEnumerable<Human> humans, GameObject window) : this(window, humans) =>
-            Handle.Disposables.Add(window
-                .With(UGUI.ModifyAt("Selection", "1st")(
-                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
-                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(0))) +
-                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 0))))
-                .With(UGUI.ModifyAt("Selection", "2nd")(
-                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(1))) +
-                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
-                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 1))))
-                .With(UGUI.ModifyAt("Selection", "3rd")(
-                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(2))) +
-                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
-                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 2))))
-#if Aicomi
-                .With(UGUI.ModifyAt("Selection", "4th")(
-                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(3))) +
-                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
-                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 3))))
-                .With(UGUI.ModifyAt("Selection", "5th")(
-                    UGUI.Cmp<Toggle>(ui => ui.OnValueChangedAsObservable().Subscribe(Toggle(4))) +
-                    UGUI.Cmp<Toggle, ToggleGroup>((ui, group) => ui.group = group) +
-                    UGUI.Cmp(UGUI.Interactable<Toggle>(Panels.Count() > 4))))
-#endif
-                .GetComponentInParent<ObservableUpdateTrigger>()
-                    .UpdateAsObservable().Subscribe(F.Ignoring<Unit>(Update)));
-        void Update(HumanPanel panel) =>
-            panel.Update();
-        void Update() =>
-            Panels.ForEach(Update);
-        internal Action OnActive(Human human) =>
-            () => Handle.Title.SetText(human.With(PrepareOnDestroy).fileParam.fullname, false);
-        void PrepareOnDestroy(Human human) =>
-            Handle.Disposables.Add(human.gameObject
-                .GetComponent<ObservableDestroyTrigger>()
-                .OnDestroyAsObservable().Subscribe(F.Ignoring<Unit>(Handle.Dispose)));
-        static GameObject Create =>
-            UGUI.Window(260, 500, Plugin.Name, Handle)
-                .With(UGUI.Cmp(UGUI.LayoutGroup<VerticalLayoutGroup>(spacing: 6)));
-        static void PrepareCustom() =>
-            new Window([HumanCustom.Instance.Human],
-                Create
-                    .With(CommonEdit.PrepareCustom)
-                    .With(ToggleEdit.Prepare)
-                    .With(CycledEdit.Prepare)
-                    .With(RangedEdit.Prepare));
-        static void PrepareHScene() =>
-#if Aicomi
-            new Window(HScene.Instance._hActorAll.Select(actor => actor.Human),
-#else
-            new Window(HScene.Instance.Actors.Select(actor => actor.Human),
-#endif
-                Create
-                    .With(CommonEdit.PrepareHScene)
-                    .With(ToggleEdit.Prepare)
-                    .With(CycledEdit.Prepare)
-                    .With(RangedEdit.Prepare));
-        internal static void Initialize()
-        {
-            Handle = new WindowHandle(Plugin.Instance, "PelvicFin", new(1000, -400), new KeyboardShortcut(KeyCode.P, KeyCode.LeftControl));
-            Util<HumanCustom>.Hook(Util.OnCustomHumanReady.Apply(PrepareCustom), Handle.Dispose);
-            Util<HScene>.Hook(PrepareHScene, Handle.Dispose);
-        }
-    }
+
     [BepInProcess(Process)]
     [BepInPlugin(Guid, Name, Version)]
     [BepInDependency(CoastalSmell.Plugin.Guid)]
@@ -369,8 +297,11 @@ namespace PelvicFin
         internal static Plugin Instance;
         public const string Name = "PelvicFin";
         public const string Guid = $"{Process}.{Name}";
-        public const string Version = "1.1.5";
+        public const string Version = "1.2.0";
+        CompositeDisposable Subscriptions;
         public override void Load() =>
-            (Instance = this).With(Window.Initialize);
+            (Instance, Subscriptions) = (this, [.. UI.Initialize(this)]);
+        public override bool Unload() =>
+            true.With(Subscriptions.Dispose) && base.Unload();
     }
 }

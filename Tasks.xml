@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <ItemGroup>
+        <PackageReference Include="System.Reactive" Version="6.1.0"/>
+        <ProjectReference Include="..\..\SVS-Fishbone\CoastalSmell\$(GamePrefix)\$(GamePrefix)_CoastalSmell.csproj">
+            <Private>False</Private>
+            <ExcludeAssets>all</ExcludeAssets>
+        </ProjectReference>
+		<Compile Include="..\PelvicFin.cs"/>
+    </ItemGroup>
+    <Target Name="Clone" BeforeTargets="Build" Condition="!Exists('..\..\SVS-Fishbone')">
+        <Exec WorkingDirectory="..\.." Command="git clone https://github.com/MaybeSamigroup/SVS-Fishbone.git SVS-Fishbone"/>
+    </Target>
+    <Target Name="Deploy" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
+        <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="$(GamePath)\BepInEx\plugins\" />
+    </Target>
+    <Target Name="Release" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+        <Copy SourceFiles="$(OutputPath)\$(AssemblyName).dll" DestinationFolder="..\Release\$(GameName)\BepinEx\plugins"/>
+        <ZipDirectory SourceDirectory="..\Release\$(GameName)" Overwrite="true" DestinationFile="..\$(AssemblyName).zip"/>
+    </Target>
+    <Target Name="CleanRelease" AfterTargets="Clean">
+        <RemoveDir Directories="..\Release\$(GameName)"/>
+        <Delete Files="..\$(AssemblyName).zip"/>
+    </Target>
+</Project>
