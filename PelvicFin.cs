@@ -87,13 +87,13 @@ namespace PelvicFin
                 UGUI.Interactable(false)
             ).AsParent() + UGUI.Component<Toggle, ToggleGroup>((toggle, group) => toggle.group = group));
 
-        static IEnumerable<Toggle> Toggles(UIDesign design) =>
+        static IEnumerable<Toggle> Toggles(UIAction action) =>
 #if Aicomi
             new string[] { "1st", "2nd", "3rd", "4th", "5th" }
-                .Select(name => new GameObject(name).With(UGUI.Toggle(50, 24, UGUI.Text(text: name)) + design))
+                .Select(name => new GameObject(name).With(UGUI.Toggle(50, 24, UGUI.Text(text: name)) + action))
 #else
             new string[] { "1st", "2nd", "3rd" }
-                .Select(name => new GameObject(name).With(UGUI.Toggle(80, 24, UGUI.Text(text: name)) + design))
+                .Select(name => new GameObject(name).With(UGUI.Toggle(80, 24, UGUI.Text(text: name)) + action))
 #endif
                 .Select(go => go.GetComponent<Toggle>()).ToList();
 
@@ -112,11 +112,12 @@ namespace PelvicFin
 
         static GameObject PrepareTemplate(this SceneType scene, Window window) =>
             new GameObject("Template").With(
-                window.Content.With(UGUI.LayoutV(spacing: 6)).AsParent(active: false) +
-                UGUI.ColorPanel + UGUI.LayoutV(spacing: 5, padding: UGUI.Offset(10, 5)) +
-                Enum.GetValues<ToggleProp>().Select(prop => prop.PrepareTemplate(scene)).AsDesign() +
-                Enum.GetValues<RingProp>().Select(prop => prop.PrepareTemplate(scene)).AsDesign() +
-                Enum.GetValues<RangeProp>().Select(prop => prop.PrepareTemplate(scene)).AsDesign());
+                window.Content.With(UGUI.LayoutV(spacing: 6)).AsParent() +
+                UGUI.GameObject(active: false) + UGUI.ColorPanel +
+                UGUI.LayoutV(spacing: 5, padding: UGUI.Offset(10, 5)) +
+                Enum.GetValues<ToggleProp>().Select(prop => prop.PrepareTemplate(scene)).Aggregate() +
+                Enum.GetValues<RingProp>().Select(prop => prop.PrepareTemplate(scene)).Aggregate() +
+                Enum.GetValues<RangeProp>().Select(prop => prop.PrepareTemplate(scene)).Aggregate());
 
         static IEnumerable<IDisposable> Subscribe(this SceneType scene, Window window, Transform edit, Human human) => [
             ..Enum.GetValues<ToggleProp>().SelectMany(prop => prop.Subscribe(scene, window, edit.Find(prop.ToString()), human)),
@@ -125,7 +126,7 @@ namespace PelvicFin
             human.component.OnDestroyAsObservable().Subscribe(_ => UnityEngine.Object.Destroy(window.Background))
         ];
 
-        internal static UIDesign PrepareSceneUI(this SceneType scene, string name) =>
+        internal static UIAction PrepareSceneUI(this SceneType scene, string name) =>
             scene switch
             {
                 SceneType.Custom =>
@@ -152,7 +153,7 @@ namespace PelvicFin
     }
     static class ToggleExtension
     {
-        internal static UIDesign PrepareTemplate(this ToggleProp prop, SceneType scene) =>
+        internal static UIAction PrepareTemplate(this ToggleProp prop, SceneType scene) =>
             prop.ToString().AsChild(
                 scene.PrepareSceneUI(prop.ToString()) +
                 "Value".AsChild(UGUI.Check(26, 26)) +
@@ -193,7 +194,7 @@ namespace PelvicFin
     }
     static class RingExtension
     {
-        internal static UIDesign PrepareTemplate(this RingProp prop, SceneType scene) =>
+        internal static UIAction PrepareTemplate(this RingProp prop, SceneType scene) =>
             prop.ToString().AsChild(
                 scene.PrepareSceneUI(prop.ToString()) +
                 "Prev".AsChild(UGUI.Button(28, 24, UGUI.Text(text: "<)"))) +
@@ -242,7 +243,7 @@ namespace PelvicFin
     }
     static class RangeExtension
     {
-        internal static UIDesign PrepareTemplate(this RangeProp prop, SceneType scene) =>
+        internal static UIAction PrepareTemplate(this RangeProp prop, SceneType scene) =>
             prop.ToString().AsChild(scene.PrepareSceneUI(prop.ToString()) + "Range".AsChild(UGUI.Slider(95, 24)));
 
         internal static IEnumerable<IDisposable> Subscribe(this RangeProp prop, SceneType scene, Window window, Transform edit, Human human) =>
