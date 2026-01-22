@@ -90,10 +90,10 @@ namespace PelvicFin
         static IEnumerable<Toggle> Toggles(UIAction action) =>
 #if Aicomi
             new string[] { "1st", "2nd", "3rd", "4th", "5th" }
-                .Select(name => new GameObject(name).With(UGUI.Toggle(50, 24, UGUI.Text(text: name)) + action))
+                .Select(name => new GameObject(name).With(UGUI.Toggle(50, 24, UGUI.Font(size: 24) + UGUI.Text(text: name)) + action))
 #else
             new string[] { "1st", "2nd", "3rd" }
-                .Select(name => new GameObject(name).With(UGUI.Toggle(80, 24, UGUI.Text(text: name)) + action))
+                .Select(name => new GameObject(name).With(UGUI.Toggle(80, 24, UGUI.Font(size: 24) + UGUI.Text(text: name)) + action))
 #endif
                 .Select(go => go.GetComponent<Toggle>()).ToList();
 

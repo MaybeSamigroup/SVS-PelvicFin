@@ -1,14 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <TargetFramework>net6</TargetFramework>
-        <AssemblyName>SVS_PelvicFin</AssemblyName>
         <Description>plugin to modify miscellaneous character status in character creation and h scene for SamabakeScramble</Description>
-        <LangVersion>latest</LangVersion>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<GameName>SamabakeScramble</GameName>
-        <GamePath>$([MSBuild]::GetRegistryValue('HKEY_CURRENT_USER\Software\ILLGAMES\$(GameName)','INSTALLDIR'))</GamePath>
-        <GamePrefix>$([System.IO.Path]::GetFileName($(MSBuildProjectDirectory)))</GamePrefix>
-        <DefineConstants>$(GameName)</DefineConstants>
     </PropertyGroup>
 	<ItemGroup>
         <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.738"/>

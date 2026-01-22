@@ -1,34 +1,45 @@
 # SVS-PelvisFin
 
-plugin to modify miscellaneous character status in character creation and h scene for SamabakeScramble.
+- [Prerequisites](#prerequisites)
+  - [Aicomi](#aicomi)
+  - [SamabakeScramble](#samabakescramble)
+- [Installation](#installation)
+- [Migration between versions](#migration-between-versions)
+- [How to Use](#how-to-use)
 
-## Prerequisites (Aicomi)
+Plugin to modify miscellaneous character status in character creation and h scene for Aicomi and SamabakeScramble.
+
+## Prerequisites
+
+### Aicomi
+
+Confirmed working under Aicomi 1.0.7
 
 - [AC-HF_Patch](https://github.com/ManlyMarco/AC-HF_Patch)
   - Message Center
   - BepInEx.ConfigurationManager
   - SVS_BepisPlugins
 - [CoastalSmell](https://github.com/MaybeSamigroup/SVS-Fishbone)
-  - 1.1.9 or later
+  - 2.0.0 or later
 
-Confirmed working under Aicomi 1.0.1
+### SamabakeScramble
 
-## Prerequisites (SamabakeScramble)
+Confirmed working under SamabakeScramble 1.1.6
 
 - [SVS-HF_Patch](https://github.com/ManlyMarco/SVS-HF_Patch)
   - Message Center
   - BepInEx.ConfigurationManager
   - SVS_BepisPlugins
 - [CoastalSmell](https://github.com/MaybeSamigroup/SVS-Fishbone)
-  - 1.1.9 or later
-
-Confirmed working under SamabakeScramble 1.1.6
+  - 2.0.0 or later
 
 ## Installation
 
 Extract the [latest release](https://github.com/MaybeSamigroup/SVS-PelvicFin/releases/latest) to your game install directory.
 
-## Migration from older release
+## Migration between versions
+
+### MIgration from older release
 
 Remove `PelvicFin.dll` from BepinEx/plugins.
 
@@ -42,7 +53,7 @@ To show / hide the ui, you can use keyboard shortcut.
 
 Ctrl + p is mapped as default and can be configured through plugin setting.
 
-## Tips
+### Tips
 
 Base color setting for simple figure is only applied to player character.
 
